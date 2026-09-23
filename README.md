@@ -1,9 +1,9 @@
 # ai-driven-method
 
-[![Release](https://img.shields.io/github/v/release/BarthGve/ai-driven-method?label=version)](https://github.com/BarthGve/ai-driven-method/releases)
+[![Release](https://img.shields.io/github/v/release/theo-jim/ai-driven-method?label=version)](https://github.com/theo-jim/ai-driven-method/releases)
 
 
-A fork of [killer-saas](https://github.com/MikeCodeur/killer-saas) by [Mike Codeur](https://github.com/MikeCodeur).
+A fork of [killer-saas](https://github.com/MikeCodeur/killer-saas) by [Mike Codeur](https://github.com/MikeCodeur) and [ai-driven-method](https://github.com/theo-jim/ai-driven-method/) by [BarthGve](https://github.com/BarthGve)
 
 Commands: `/dm-*`.
 
@@ -73,16 +73,16 @@ root (the script fetches the repo itself).
 **Claude Code:**
 
     cd your-project
-    curl -fsSL https://raw.githubusercontent.com/BarthGve/ai-driven-method/main/install.sh | bash
+    curl -fsSL https://raw.githubusercontent.com/theo-jim/ai-driven-method/main/install.sh | bash
 
 **Codex:**
 
     cd your-project
-    curl -fsSL https://raw.githubusercontent.com/BarthGve/ai-driven-method/main/install.sh | bash -s -- --target codex
+    curl -fsSL https://raw.githubusercontent.com/theo-jim/ai-driven-method/main/install.sh | bash -s -- --target codex
 
 To install the Codex skills globally instead:
 
-    curl -fsSL https://raw.githubusercontent.com/BarthGve/ai-driven-method/main/install.sh | bash -s -- --global --target codex
+    curl -fsSL https://raw.githubusercontent.com/theo-jim/ai-driven-method/main/install.sh | bash -s -- --global --target codex
 
 The Codex target requires Node.js and installs the skills in `.codex/skills`
 for a project install or `~/.codex/skills` for a global install.
@@ -90,18 +90,18 @@ for a project install or `~/.codex/skills` for a global install.
 **Grok:**
 
     cd your-project
-    curl -fsSL https://raw.githubusercontent.com/BarthGve/ai-driven-method/main/install.sh | bash -s -- --target grok
+    curl -fsSL https://raw.githubusercontent.com/theo-jim/ai-driven-method/main/install.sh | bash -s -- --target grok
 
 To install Grok tooling globally instead:
 
-    curl -fsSL https://raw.githubusercontent.com/BarthGve/ai-driven-method/main/install.sh | bash -s -- --global --target grok
+    curl -fsSL https://raw.githubusercontent.com/theo-jim/ai-driven-method/main/install.sh | bash -s -- --global --target grok
 
 The Grok target requires Node.js and installs commands, skills, and agents in
 `.grok/` for a project install or `~/.grok` for a global install.
 
 Prefer to read before you run? Clone the repo somewhere, then run the script from your project's root:
 
-    git clone https://github.com/BarthGve/ai-driven-method.git ~/tools/ai-driven-method
+    git clone https://github.com/theo-jim/ai-driven-method.git ~/tools/ai-driven-method
     cd your-project
     ~/tools/ai-driven-method/install.sh
 
@@ -174,9 +174,9 @@ From your project's root:
     ~/tools/ai-driven-method/install.sh update --target codex   # Codex
     ~/tools/ai-driven-method/install.sh update --target grok    # Grok
     # or, without a clone:
-    curl -fsSL https://raw.githubusercontent.com/BarthGve/ai-driven-method/main/install.sh | bash -s -- update
+    curl -fsSL https://raw.githubusercontent.com/theo-jim/ai-driven-method/main/install.sh | bash -s -- update
     # overwrite locally modified templates too:
-    curl -fsSL https://raw.githubusercontent.com/BarthGve/ai-driven-method/main/install.sh | bash -s -- update --force
+    curl -fsSL https://raw.githubusercontent.com/theo-jim/ai-driven-method/main/install.sh | bash -s -- update --force
 
 What it does — and doesn't:
 - Cleanly replaces the method's tooling, tracked per target in `.dm-manifest` (`.claude/`, `.codex/`, or `.grok/` — your own commands/skills are never touched, renamed or removed files leave no ghosts).
