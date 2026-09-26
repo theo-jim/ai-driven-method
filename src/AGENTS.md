@@ -63,8 +63,8 @@ branch, preserving the normal Quick Fix path. Only if that push is refused,
 it creates and pushes a short-lived `quickfix/*` branch from the committed
 HEAD, opens a PR/MR into the integration branch, and follows the **Ship
 strategy** below: manual stops with the PR for the human to merge; auto
-squash-merges it. Cleanup of the fallback branch happens only after `gh pr
-view` proves the PR is `MERGED`, after which the local integration branch is
+squash-merges it. Cleanup of the fallback branch happens only after
+`dm-vcs.sh pr-state` proves the PR/MR is `MERGED`, after which the local integration branch is
 reset to match the merged remote (a squash commit has no ancestry relation to
 the original local commit). This recovery branch is an exception solely for a
 refused push; Quick Fix work itself still has no feature branch or worktree.

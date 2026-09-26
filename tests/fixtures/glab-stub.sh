@@ -127,6 +127,27 @@ if (cmd === "api") {
     if (mr.force_remove_source_branch || f.should_remove_source_branch === "true" || s.delete_on_merge_anyway) {
       s.branches = (s.branches || []).filter((b) => b !== mr.source_branch);
     }
+    if (s.originPath) {
+      const { execFileSync } = require("child_process");
+      const git = (args) => execFileSync("git", ["--git-dir", s.originPath, ...args], {
+        env: { ...process.env, GIT_AUTHOR_NAME: "glab-stub", GIT_AUTHOR_EMAIL: "glab-stub@test", GIT_COMMITTER_NAME: "glab-stub", GIT_COMMITTER_EMAIL: "glab-stub@test" },
+      }).toString().trim();
+      try {
+        // Real squash-merge: a new commit on the target branch carrying the
+        // source branch tree, parented on target — same content, different
+        // SHA, like a real GitLab squash-merge produces.
+        const headSha = git(["rev-parse", "refs/heads/" + mr.source_branch]);
+        const baseSha = git(["rev-parse", "refs/heads/" + mr.target_branch]);
+        const tree = git(["rev-parse", headSha + "^{tree}"]);
+        const squashSha = git(["commit-tree", tree, "-p", baseSha, "-m", mr.title || "squash merge"]);
+        git(["update-ref", "refs/heads/" + mr.target_branch, squashSha]);
+        // s.branches was already filtered above when the source branch is
+        // deleted on merge; mirror that on the real ref too.
+        if (!(s.branches || []).includes(mr.source_branch)) {
+          git(["update-ref", "-d", "refs/heads/" + mr.source_branch]);
+        }
+      } catch (e) { /* best-effort simulation */ }
+    }
     save(); out(mr); process.exit(0);
   }
   if ((m = path.match(/^projects\/[^/]+\/repository\/branches\/(.+)$/))) {
@@ -142,7 +163,11 @@ if (cmd === "api") {
 if (cmd === "mr" && sub === "create") {
   const iid = s.mrs.reduce((n, x) => Math.max(n, x.iid || 0), 0) + 1;
   const mr = { iid, source_branch: flag("--source-branch", "-s"), target_branch: flag("--target-branch", "-b"), title: flag("--title", "-t"), description: fs.readFileSync(flag("--description-file"), "utf8"), state: "opened" };
-  s.mrs.push(mr); save();
+  s.mrs.push(mr);
+  // A merge request always comes from a branch that exists on origin.
+  s.branches = s.branches || [];
+  if (!s.branches.includes(mr.source_branch)) s.branches.push(mr.source_branch);
+  save();
   out("\nCreating merge request for " + mr.source_branch + " into " + mr.target_branch + " in " + proj + "\n\n!" + iid + " " + mr.title + " (" + mr.source_branch + ")\n " + mrUrl(mr) + "\n\n");
   process.exit(0);
 }
