@@ -22,6 +22,7 @@ test("install lays down commands and records them in the manifest", () => {
   run(d, ["--target", "claude"]);
   assert.ok(existsSync(join(d, ".claude/commands/dm-prd.md")));
   assert.ok(existsSync(join(d, ".claude/commands/dm-ship.md")));
+  assert.ok(existsSync(join(d, ".dm/lib/dm-gate.sh")));
   const manifest = readFileSync(join(d, ".claude/.dm-manifest"), "utf8");
   assert.match(manifest, /commands\/dm-prd\.md/);
 });
