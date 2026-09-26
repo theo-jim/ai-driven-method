@@ -18,7 +18,13 @@ const GATE = join(ROOT, "src/hooks/dm-gate.sh");
 const AGENTS = join(ROOT, "src/AGENTS.md");
 const GH_STUB = join(ROOT, "tests/fixtures/gh-stub.sh");
 
-function repo({ develop = true, protectIntegration = false, mergeMode = "manual" } = {}) {
+function repo({
+  develop = true,
+  protectIntegration = false,
+  mergeMode = "manual",
+  mergeFailRemaining = 0,
+  autoDeleteHead = false,
+} = {}) {
   const d = mkdtempSync(join(tmpdir(), "dm-quickfix-"));
   const integration = develop ? "develop" : "main";
   const origin = mkdtempSync(join(tmpdir(), "dm-quickfix-origin-"));
@@ -55,7 +61,14 @@ function repo({ develop = true, protectIntegration = false, mergeMode = "manual"
   }
 
   const statePath = join(d, "gh-state.json");
-  writeFileSync(statePath, JSON.stringify({ prs: [] }, null, 2));
+  writeFileSync(
+    statePath,
+    JSON.stringify(
+      { prs: [], merge_fail_remaining: mergeFailRemaining, auto_delete_head: autoDeleteHead, originPath: origin },
+      null,
+      2,
+    ),
+  );
   const bin = join(d, "bin");
   mkdirSync(bin, { recursive: true });
   cpSync(GH_STUB, join(bin, "gh"));
@@ -81,6 +94,25 @@ function runQuickfix({ d, bin, statePath }) {
       DM_GH_STUB_STATE: statePath,
     },
   });
+}
+
+function runQuickfixExpectFailure({ d, bin, statePath }) {
+  try {
+    execFileSync("bash", [GATE, "quickfix-push"], {
+      cwd: d,
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH}`,
+        DM_GH_STUB_STATE: statePath,
+      },
+    });
+    throw new Error("expected quickfix-push to exit non-zero");
+  } catch (e) {
+    if (e.status == null) throw e;
+    return e;
+  }
 }
 
 function remoteHead(d, branch) {
@@ -129,6 +161,7 @@ for (const develop of [true, false]) {
   test(`quickfix-push proves and cleans up an auto-merged fallback PR to protected ${integration}`, () => {
     const r = repo({ develop, protectIntegration: true, mergeMode: "auto" });
     commitQuickfix(r.d);
+    const preFallbackSha = execSync("git rev-parse HEAD", { cwd: r.d, encoding: "utf8" }).trim();
 
     runQuickfix(r);
 
@@ -141,5 +174,51 @@ for (const develop of [true, false]) {
     assert.ok(state.view_calls >= 1);
     assert.equal(remoteHead(r.d, state.prs[0].head), "");
     assert.equal(execSync(`git branch --list ${state.prs[0].head}`, { cwd: r.d, encoding: "utf8" }).trim(), "");
+
+    // The remote squash-merge produced a new commit on $integ, unrelated by
+    // ancestry to the pre-fallback local commit; local must be realigned to
+    // it so the next Quick Fix's direct push isn't rejected as non-ff.
+    execSync("git fetch origin", { cwd: r.d, stdio: "pipe" });
+    const localSha = execSync(`git rev-parse ${integration}`, { cwd: r.d, encoding: "utf8" }).trim();
+    const remoteSha = execSync(`git rev-parse origin/${integration}`, { cwd: r.d, encoding: "utf8" }).trim();
+    assert.equal(localSha, remoteSha);
+    assert.notEqual(localSha, preFallbackSha);
   });
 }
+
+test("quickfix-push refuses to run when the current branch is not the integration branch", () => {
+  const r = repo();
+  commitQuickfix(r.d);
+  const head = execSync("git rev-parse HEAD", { cwd: r.d, encoding: "utf8" }).trim();
+  execSync("git checkout -b other", { cwd: r.d, stdio: "pipe" });
+
+  const err = runQuickfixExpectFailure(r);
+
+  assert.match(err.stderr.toString(), /must run on the integration branch/);
+  assert.notEqual(remoteHead(r.d, r.integration).split(/\s+/)[0], head);
+});
+
+test("quickfix-push does not crash when gh pr merge itself fails, and leaves the PR open", () => {
+  const r = repo({ protectIntegration: true, mergeMode: "auto", mergeFailRemaining: 1 });
+  commitQuickfix(r.d);
+
+  const err = runQuickfixExpectFailure(r);
+
+  assert.match(err.stderr.toString(), /not MERGED/);
+  const state = JSON.parse(readFileSync(r.statePath, "utf8"));
+  assert.equal(state.prs[0].state, "OPEN");
+  assert.equal(state.merge_calls, 1);
+  assert.match(remoteHead(r.d, state.prs[0].head), /refs\/heads\/quickfix\//);
+});
+
+test("quickfix-push tolerates the remote already deleting the merged fallback branch", () => {
+  const r = repo({ protectIntegration: true, mergeMode: "auto", autoDeleteHead: true });
+  commitQuickfix(r.d);
+
+  const out = runQuickfix(r);
+
+  assert.match(out, /Quick Fix merged into/);
+  const state = JSON.parse(readFileSync(r.statePath, "utf8"));
+  assert.equal(state.prs[0].state, "MERGED");
+  assert.equal(remoteHead(r.d, state.prs[0].head), "");
+});

@@ -49,18 +49,22 @@ integration_branch() {
 }
 production_branch() { printf 'main'; }
 
-# Reads the project's ship strategy. Missing or malformed configuration remains
-# manual: opening a PR does not authorize merging it.
+# Reads the project's ship strategy (same "Merge mode:" line /dm-ship reads).
+# Missing or malformed configuration remains manual: opening a PR does not
+# authorize merging it. Case/markdown-tolerant, but still requires "auto" to
+# be the word immediately after "Merge mode:" — not just present anywhere on
+# the line, since the line's own parenthetical always mentions "auto".
 quickfix_merge_mode() {
-  local root mode="manual"
+  local root mode="manual" match
   root="$(repo_root)"
   if [ -f "$root/AGENTS.md" ]; then
-    mode="$(awk '$1 == "Merge" && $2 == "mode:" { print $3; exit }' "$root/AGENTS.md" 2>/dev/null || true)"
+    match="$(awk '{
+      l = tolower($0); gsub(/\*/, "", l)
+      if (l ~ /^merge mode:[ \t]+auto([ \t]|$)/) { print "auto"; exit }
+    }' "$root/AGENTS.md" 2>/dev/null || true)"
+    [ "$match" = "auto" ] && mode="auto"
   fi
-  case "$mode" in
-    auto) printf 'auto' ;;
-    *) printf 'manual' ;;
-  esac
+  printf '%s' "$mode"
 }
 
 quickfix_fallback_branch() {
@@ -81,8 +85,13 @@ quickfix_fallback_branch() {
 # strategy as /dm-ship. The branch is deliberately left intact unless GitHub
 # proves that the squash merge completed.
 quickfix_push() {
-  local integ fallback title body url mode state
+  local integ fallback title body url mode state current
   integ="$(integration_branch)"
+  current="$(git rev-parse --abbrev-ref HEAD)"
+  if [ "$current" != "$integ" ]; then
+    echo "dm-gate: quickfix-push must run on the integration branch ('$integ'); currently on '$current'." >&2
+    return 1
+  fi
 
   if git push origin "$integ"; then
     printf 'Quick Fix pushed directly to %s.\n' "$integ"
@@ -114,7 +123,10 @@ Review the commit and run the verification recorded with this Quick Fix."
     return 0
   fi
 
-  gh pr merge "$url" --squash --delete-branch=false
+  if ! gh pr merge "$url" --squash --delete-branch=false; then
+    echo "dm-gate: gh pr merge failed for $url; fallback branch kept for a retry." >&2
+  fi
+
   state="$(gh pr view "$url" --json state,mergedAt --jq '.state')"
   if [ "$state" != "MERGED" ]; then
     echo "dm-gate: Quick Fix PR is '$state', not MERGED; fallback branch kept." >&2
@@ -122,7 +134,15 @@ Review the commit and run the verification recorded with this Quick Fix."
   fi
 
   git branch -D "$fallback"
-  git push origin --delete "$fallback"
+  # GitHub can auto-delete the head branch server-side on merge regardless of
+  # --delete-branch=false; tolerate that instead of crashing on a proven merge.
+  git push origin --delete "$fallback" 2>/dev/null || true
+
+  # The merge created a new squash commit on origin/$integ that local $integ
+  # (still at the pre-fallback commit) has no ancestry relation to. Realign so
+  # the next Quick Fix's direct push isn't rejected as non-fast-forward.
+  git fetch origin "$integ"
+  git reset --hard "origin/$integ"
   printf 'Quick Fix merged into %s and fallback branch %s was removed.\n' "$integ" "$fallback"
 }
 
