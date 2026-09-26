@@ -52,3 +52,13 @@ test("dm-wiki cleans its temp dir even when TMPDIR contains a quote", () => {
   assert.equal(res.status, 0, res.stderr);
   assert.deepEqual(readdirSync(tmp), []);
 });
+
+// Regression for e33a10e: the EXIT trap used to fail `set -u` after a successful push.
+test("dm-wiki publish on GitHub exits 0 after a successful push", () => {
+  const app = githubApp();
+  const res = publish(app);
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stdout, /published v1\.2\.0 \(1 stories\)/);
+  const ls = execFileSync("git", ["--git-dir", app.bare, "ls-tree", "--name-only", "-r", "master"], { encoding: "utf8" });
+  assert.deepEqual(ls.trim().split("\n").sort(), ["Home.md", "s01-x.md"]);
+});
