@@ -102,7 +102,10 @@ case "$args" in
     ;;
   *"api graphql"*|*"api graphql"*)
     node -e '
-      const s=JSON.parse(require("fs").readFileSync(process.env.DM_GH_STUB_STATE,"utf8"));
+      const fs=require("fs");
+      const s=JSON.parse(fs.readFileSync(process.env.DM_GH_STUB_STATE,"utf8"));
+      s.graphql_calls=(s.graphql_calls||0)+1;
+      fs.writeFileSync(process.env.DM_GH_STUB_STATE, JSON.stringify(s,null,2));
       if (s.subissue_fail) process.exit(1);
       process.stdout.write("{}");
     '

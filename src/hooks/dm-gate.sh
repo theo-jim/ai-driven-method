@@ -77,10 +77,18 @@ story_id_from_branch() {
 
 # s01-x/t01-y → s01-x; s01-x → s01-x (plan lives at docs/plans/<story-id>.md)
 # fix/<id> → fix-<id> (hyphenated: docs/plans/fix-<id>.md, a top-level plans file)
+# A malformed fix id (embedded slashes, uppercase, empty) is rejected outright
+# rather than silently building a nonsensical nested path.
 plan_id_from_work_id() {
   local id="$1"
   case "$id" in
-    fix/*) printf 'fix-%s' "${id#fix/}" ;;
+    fix/*)
+      if [[ ! "$id" =~ ^fix/[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
+        echo "dm-gate: malformed fix id '$id' (expected fix/<kebab-id>, e.g. fix/null-cart-crash)." >&2
+        return 1
+      fi
+      printf 'fix-%s' "${id#fix/}"
+      ;;
     */*) printf '%s' "${id%%/*}" ;;
     *) printf '%s' "$id" ;;
   esac
