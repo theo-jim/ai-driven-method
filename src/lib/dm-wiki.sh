@@ -9,6 +9,12 @@ source "$SCRIPT_DIR/dm-config.sh"
 
 die() { echo "dm-wiki: $*" >&2; exit 1; }
 
+# Global, not cmd_publish's local: the EXIT trap fires after cmd_publish returns.
+DM_WIKI_TMP=""
+dm_wiki_cleanup() {
+  if [ -n "$DM_WIKI_TMP" ]; then rm -rf "$DM_WIKI_TMP"; fi
+}
+
 cmd_publish() {
   local app_root="${1:-}" version="${2:-}"
   shift 2 || true
@@ -60,9 +66,8 @@ cmd_publish() {
   fi
   local tmp
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/dm-wiki.XXXXXX")"
-  # Expanded now: the EXIT trap runs after cmd_publish returns, when the local
-  # $tmp no longer exists and `set -u` would fail the whole publish.
-  trap "rm -rf '$tmp'" EXIT
+  DM_WIKI_TMP="$tmp"
+  trap dm_wiki_cleanup EXIT
 
   # Clone or init wiki (authenticated via the platform token)
   if ! git ${git_auth[@]+"${git_auth[@]}"} clone --depth 1 "$clone_url" "$tmp/wiki" 2>/dev/null; then
