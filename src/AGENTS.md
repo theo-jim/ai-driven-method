@@ -52,6 +52,17 @@ on that branch; never switch branches automatically. Before editing, verify
 that no other agent owns the base directory. If another agent is working
 there, coordinate ownership or stop; never overlap edits.
 
+After committing, run `bash .dm/lib/dm-gate.sh quickfix-push`, rather than a
+bare `git push`. It first pushes the Quick Fix directly to the integration
+branch, preserving the normal Quick Fix path. Only if that push is refused,
+it creates and pushes a short-lived `quickfix/*` branch from the committed
+HEAD, opens a PR/MR into the integration branch, and follows the **Ship
+strategy** below: manual stops with the PR for the human to merge; auto
+squash-merges it. Cleanup of the fallback branch happens only after `gh pr
+view` proves the PR is `MERGED`. This recovery branch is an exception solely
+for a refused push; Quick Fix work itself still has no feature branch or
+worktree.
+
 ## Pipeline (commands)
 - `/dm-prd`        frames the product: clone an existing SaaS **or** greenfield (WHAT + WHY). Not kill-only.
 - `/dm-init`       GitHub remote, `main` (+ optional `develop`), Project board, wiki, `VERSION`, CI

@@ -20,6 +20,56 @@ fi
 args="$*"
 
 case "$args" in
+  *"pr create"*)
+    node -e '
+      const fs=require("fs");
+      const s=JSON.parse(fs.readFileSync(process.env.DM_GH_STUB_STATE,"utf8"));
+      const argv=process.argv.slice(1);
+      const get=flag=>{const i=argv.indexOf(flag); return i>=0?argv[i+1]:null;};
+      s.prs=s.prs||[];
+      const number=s.prs.length+1;
+      const pr={
+        number,
+        url:"https://github.com/acme/app/pull/"+number,
+        base:get("--base"),
+        head:get("--head"),
+        title:get("--title"),
+        body:get("--body"),
+        state:"OPEN",
+        mergedAt:null
+      };
+      s.prs.push(pr);
+      fs.writeFileSync(process.env.DM_GH_STUB_STATE,JSON.stringify(s,null,2));
+      process.stdout.write(pr.url+"\n");
+    ' "$@"
+    ;;
+  *"pr merge"*)
+    node -e '
+      const fs=require("fs");
+      const s=JSON.parse(fs.readFileSync(process.env.DM_GH_STUB_STATE,"utf8"));
+      const target=process.argv.slice(3).find(a=>!a.startsWith("-"));
+      const pr=(s.prs||[]).find(p=>p.url===target||p.head===target);
+      if (!pr) process.exit(1);
+      pr.state="MERGED";
+      pr.mergedAt="2026-01-01T00:00:00Z";
+      s.merge_calls=(s.merge_calls||0)+1;
+      fs.writeFileSync(process.env.DM_GH_STUB_STATE,JSON.stringify(s,null,2));
+    ' "$@"
+    ;;
+  *"pr view"*)
+    node -e '
+      const fs=require("fs");
+      const s=JSON.parse(fs.readFileSync(process.env.DM_GH_STUB_STATE,"utf8"));
+      const argv=process.argv.slice(3);
+      const target=argv.find(a=>!a.startsWith("-"));
+      const pr=(s.prs||[]).find(p=>p.url===target||p.head===target);
+      if (!pr) process.exit(1);
+      s.view_calls=(s.view_calls||0)+1;
+      fs.writeFileSync(process.env.DM_GH_STUB_STATE,JSON.stringify(s,null,2));
+      if (argv.includes("--jq")) process.stdout.write(pr.state+"\n");
+      else process.stdout.write(JSON.stringify({state:pr.state,mergedAt:pr.mergedAt}));
+    ' "$@"
+    ;;
   *"issue list"*)
     node -e '
       const s=JSON.parse(require("fs").readFileSync(process.env.DM_GH_STUB_STATE,"utf8"));
