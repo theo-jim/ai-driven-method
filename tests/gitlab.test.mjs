@@ -321,16 +321,40 @@ test("gitlab pr-state normalizes to OPEN / MERGED / CLOSED", () => {
   assert.notEqual(runRes(VCS, app, ["pr-state", "feature/none"]).status, 0);
 });
 
-test("gitlab pr-merge squashes immediately instead of scheduling an auto-merge", () => {
+test("gitlab pr-merge squashes now and keeps the source branch despite a delete-by-default project", () => {
+  const app = glabApp({
+    mrs: [{ iid: 4, source_branch: "feature/a/t1", target_branch: "develop", state: "opened", force_remove_source_branch: true }],
+    branches: ["feature/a/t1"],
+  });
+  run(VCS, app, ["pr-merge", "feature/a/t1"]);
+  const s = readState(app.statePath);
+  assert.equal(s.mrs[0].state, "merged");
+  assert.equal(s.mrs[0].force_remove_source_branch, false);
+  assert.equal(s.mrs[0].merge_fields.squash, "true");
+  assert.equal(s.mrs[0].merge_fields.should_remove_source_branch, "false");
+  assert.deepEqual(s.branches, ["feature/a/t1"]);
+  assert.doesNotMatch(s.calls.map((c) => c.join(" ")).join("\n"), /merge_when_pipeline_succeeds|auto-merge/);
+});
+
+test("gitlab pr-merge fails loudly when the source branch is gone after the merge", () => {
   const app = glabApp({
     mrs: [{ iid: 4, source_branch: "feature/a/t1", target_branch: "develop", state: "opened" }],
+    branches: ["feature/a/t1"],
+    delete_on_merge_anyway: true,
   });
-  run(VCS, app, ["pr-merge", "4"]);
-  const mr = readState(app.statePath).mrs[0];
-  assert.equal(mr.state, "merged");
-  assert.ok(mr.merge_args.includes("--squash"));
-  assert.ok(mr.merge_args.includes("--auto-merge=false"));
-  assert.ok(!mr.merge_args.includes("--remove-source-branch") && !mr.merge_args.includes("-d"));
+  const res = runRes(VCS, app, ["pr-merge", "4"]);
+  assert.notEqual(res.status, 0);
+  assert.match(res.stderr, /merged but source branch 'feature\/a\/t1' is gone/);
+});
+
+test("gitlab pr-merge does not merge when it cannot clear delete-source-branch", () => {
+  const app = glabApp({
+    mrs: [{ iid: 4, source_branch: "feature/a/t1", target_branch: "develop", state: "opened" }],
+    branches: ["feature/a/t1"],
+    fail: ["merge_requests/4 -F remove_source_branch"],
+  });
+  assert.notEqual(runRes(VCS, app, ["pr-merge", "4"]).status, 0);
+  assert.equal(readState(app.statePath).mrs[0].state, "opened");
 });
 
 test("gitlab pr-open-heads lists open merge requests into a base", () => {

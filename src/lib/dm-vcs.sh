@@ -10,7 +10,7 @@
 #   auth-check                            exit 0 when the platform CLI is authenticated
 #   pr-create <base> <head> <title> <body-file>   prints the PR/MR URL
 #   pr-state <ref>                        OPEN | MERGED | CLOSED (ref = branch, number or URL)
-#   pr-merge <ref>                        squash-merge now, keep the source branch
+#   pr-merge <ref>                        squash-merge now, keep the source branch (GitLab: verified)
 #   pr-open-heads <base>                  one "<head-branch>\t<url>" line per open PR/MR into base
 #   issue-list <open|closed>              JSON [{number,title,labels:[name]}]
 #   issue-body-set <number> <body-file>
@@ -169,10 +169,29 @@ dm_vcs_pr_state() {
 dm_vcs_pr_merge() {
   local ref="$1"
   case "$(dm_vcs_platform)" in
-    # --auto-merge defaults to true in glab: it would only schedule the merge.
-    gitlab) dm_glab mr merge "$ref" --squash --auto-merge=false --yes ;;
+    gitlab) dm_vcs_gitlab_mr_merge "$ref" ;;
     *) gh pr merge "$ref" --squash --delete-branch=false ;;
   esac
+}
+
+# GitLab deletes the source branch when either the MR's force_remove_source_branch
+# (seeded by the project's "delete source branch" default) or the merge call's
+# should_remove_source_branch is true, and `glab mr merge` can only set the latter
+# to true. Clear both through the API, merge now (no merge-when-pipeline-succeeds),
+# then prove the branch survived.
+dm_vcs_gitlab_mr_merge() {
+  local ref="$1" proj mr iid branch
+  proj="$(dm_vcs_gitlab_project)" || return 1
+  mr="$(dm_glab mr view "$ref" -F json)" || return 1
+  iid="$(printf '%s' "$mr" | node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(0, "utf8")).iid || ""))')"
+  branch="$(printf '%s' "$mr" | node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(0, "utf8")).source_branch || "")')"
+  [ -n "$iid" ] && [ -n "$branch" ] || dm_vcs_die "cannot resolve merge request '$ref'" || return 1
+  dm_glab api -X PUT "${proj}/merge_requests/${iid}" -F remove_source_branch=false >/dev/null \
+    || dm_vcs_die "could not clear 'delete source branch' on !${iid} — not merging" || return 1
+  dm_glab api -X PUT "${proj}/merge_requests/${iid}/merge" \
+    -F squash=true -F should_remove_source_branch=false >/dev/null || return 1
+  dm_glab api "${proj}/repository/branches/$(dm_vcs_urlencode "$branch")" >/dev/null 2>&1 \
+    || dm_vcs_die "!${iid} merged but source branch '$branch' is gone on origin" || return 1
 }
 
 dm_vcs_pr_open_heads() {

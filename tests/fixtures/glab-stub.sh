@@ -6,7 +6,9 @@
 #   "user": "acme",
 #   "project": "acme/app",          // path used in URLs of calls that name no project
 #   "issues": [{"iid":1,"id":101,"title":"[s01-x] Parent","labels":["dm::backlog"],"description":""}],
-#   "mrs": [{"iid":3,"source_branch":"feature/s01-x/t01-y","target_branch":"develop","state":"opened"}],
+#   "mrs": [{"iid":3,"source_branch":"feature/s01-x/t01-y","target_branch":"develop","state":"opened",
+#            "force_remove_source_branch":true}],   // project "delete source branch" default
+#   "branches": ["feature/s01-x/t01-y"],           // branches on origin (merge may delete)
 #   "protected": ["main"],          // branches already protected
 #   "fail": ["links", "protected_branches", "mr merge", ...]  // substrings of calls to fail
 # }
@@ -113,6 +115,25 @@ if (cmd === "api") {
     s.protections = s.protections || {}; s.protections[f.name] = f;
     save(); out({ name: f.name }); process.exit(0);
   }
+  if ((m = path.match(/^projects\/[^/]+\/merge_requests\/(\d+)(\/merge)?$/)) && method === "PUT") {
+    const mr = findMr(m[1]);
+    if (!mr) { save(); console.error("404 merge request"); process.exit(1); }
+    if (!m[2]) {
+      if (f.remove_source_branch !== undefined) mr.force_remove_source_branch = f.remove_source_branch === "true";
+      save(); out(mr); process.exit(0);
+    }
+    if (mr.state !== "opened") { save(); console.error("405 Method Not Allowed"); process.exit(1); }
+    mr.state = "merged"; mr.merge_fields = f;
+    if (mr.force_remove_source_branch || f.should_remove_source_branch === "true" || s.delete_on_merge_anyway) {
+      s.branches = (s.branches || []).filter((b) => b !== mr.source_branch);
+    }
+    save(); out(mr); process.exit(0);
+  }
+  if ((m = path.match(/^projects\/[^/]+\/repository\/branches\/(.+)$/))) {
+    const name = decodeURIComponent(m[1]); save();
+    if (!(s.branches || []).includes(name)) { console.error("404 Branch Not Found"); process.exit(1); }
+    out({ name }); process.exit(0);
+  }
   if ((m = path.match(/^projects\/[^/]+$/)) && method === "PUT") {
     s.project_settings = { ...(s.project_settings || {}), ...f }; save(); out({}); process.exit(0);
   }
@@ -133,7 +154,11 @@ if (cmd === "mr" && sub === "view") {
 if (cmd === "mr" && sub === "merge") {
   const mr = findMr(argv[2]);
   if (!mr) { save(); console.error("no merge request found"); process.exit(1); }
-  mr.state = "merged"; mr.merge_args = argv.slice(3); save();
+  mr.state = "merged"; mr.merge_args = argv.slice(3);
+  if (mr.force_remove_source_branch || argv.includes("-d") || argv.includes("--remove-source-branch")) {
+    s.branches = (s.branches || []).filter((b) => b !== mr.source_branch);
+  }
+  save();
   out("Merged!\n"); process.exit(0);
 }
 if (cmd === "mr" && sub === "list") {

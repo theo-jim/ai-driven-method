@@ -42,7 +42,7 @@ Then proceed:
 **Always squash.** One ticket = one commit on `$INTEG`. The working commits stay on the branch, the history stays readable, and no merge commit is created.
 
 - **manual (default): do NOT merge.** End with: "PR opened: <url> (base: `$INTEG`). Merging is yours to decide (human review, protected branch, CI) — **squash-merge it**. After merging, rerun /dm-ship <story-id> <ticket-id> to clean up the ticket worktree."
-- **auto**: `bash .dm/lib/dm-vcs.sh pr-merge <url>` (squash, source branch kept), then run the Cleanup step. End with: "Ticket merged into `$INTEG`. Cycle complete for this ticket."
+- **auto**: `bash .dm/lib/dm-vcs.sh pr-merge <url>` (squash, source branch kept — on GitLab it clears the MR's "delete source branch" flag, then fails if the branch is gone after the merge), then run the Cleanup step. End with: "Ticket merged into `$INTEG`. Cycle complete for this ticket."
 
 Never merge in manual mode, even if everything is green — the gate authorizes the ship, the human decides it. When the project has a `develop` branch, never open or merge a PR into `main` from this command; production is `/dm-release` (`develop` → `main`). Without `develop`, `$INTEG` is `main` itself — that is the intended ship target, not a bypass.
 
