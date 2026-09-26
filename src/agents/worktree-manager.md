@@ -10,6 +10,7 @@ tracked project files.
 Input: a resolved work id and the repository base directory.
 - Story framing: `<story-id>` → branch `feature/<story-id>`, path `.worktrees/<story-id>` (docs only).
 - Ticket implementation: `<story-id>/<ticket-id>` → branch `feature/<story-id>/<ticket-id>`, path `.worktrees/<story-id>/<ticket-id>`.
+- Fix ticket: `<fix-id>` given as `fix/<id>` → branch `fix/<id>`, path `.worktrees/fix/<id>`. No parent story, no framing-only stage — treat it like the ticket case throughout (full rigor: worktree, TDD, implementer/reviewer subagents).
 
 Base branch is always **the integration branch** (`develop` if the project has one,
 otherwise `main`). Never create feature branches from `main` when a `develop` exists.
@@ -30,6 +31,7 @@ Procedure, fail-closed:
    exact path, e.g. (with `$INTEG` holding the resolved name):
    - Story: `git worktree add -b feature/<story-id> .worktrees/<story-id> "$INTEG"`
    - Ticket: `git worktree add -b feature/<story-id>/<ticket-id> .worktrees/<story-id>/<ticket-id> "$INTEG"`
+   - Fix: `git worktree add -b fix/<id> .worktrees/fix/<id> "$INTEG"`
    Never create or checkout it in the repository base, and never invent a
    suffix such as `-isolated`.
 4. Copy the repository base's local environment files needed to run and test

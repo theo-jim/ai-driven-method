@@ -163,18 +163,30 @@ resolve_board() {
 }
 
 # feature/<story-id> or feature/<story-id>/<ticket-id> → id after feature/
+# fix/<id> → fix/<id> unchanged (own namespace: no parent story, work id IS the branch)
 story_id_from_branch() {
   local branch="$1"
   case "$branch" in
     feature/*) printf '%s' "${branch#feature/}" ;;
+    fix/*) printf '%s' "$branch" ;;
     *) printf '' ;;
   esac
 }
 
 # s01-x/t01-y → s01-x; s01-x → s01-x (plan lives at docs/plans/<story-id>.md)
+# fix/<id> → fix-<id> (hyphenated: docs/plans/fix-<id>.md, a top-level plans file)
+# A malformed fix id (embedded slashes, uppercase, empty) is rejected outright
+# rather than silently building a nonsensical nested path.
 plan_id_from_work_id() {
   local id="$1"
   case "$id" in
+    fix/*)
+      if [[ ! "$id" =~ ^fix/[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
+        echo "dm-gate: malformed fix id '$id' (expected fix/<kebab-id>, e.g. fix/null-cart-crash)." >&2
+        return 1
+      fi
+      printf 'fix-%s' "${id#fix/}"
+      ;;
     */*) printf '%s' "${id%%/*}" ;;
     *) printf '%s' "$id" ;;
   esac
@@ -321,8 +333,8 @@ pre_push() {
       fi
 
       case "$local_ref" in
-        refs/heads/feature/*)
-          # Ticket branches require Ship allowed; story framing (docs-only) does not.
+        refs/heads/feature/*|refs/heads/fix/*)
+          # Ticket/fix branches require Ship allowed; story framing (docs-only) does not.
           id="$(story_id_from_branch "${local_ref#refs/heads/}")"
           if [ -n "$(ticket_id_from_branch "${local_ref#refs/heads/}")" ] \
             && [ -n "$id" ] && ! ship_allowed "$id"; then
@@ -335,7 +347,7 @@ pre_push() {
       while IFS= read -r id; do
         [ -n "$id" ] || continue
         case "$id" in
-          */*) ;; # ticket work id
+          */*) ;; # ticket or fix work id
           *) continue ;; # story framing merge — no review file required
         esac
         if ! ship_allowed "$id"; then
@@ -343,7 +355,7 @@ pre_push() {
           rc=1
         fi
       done < <(git log --merges --format='%s' "$range" 2>/dev/null \
-                | sed -n "s/.*Merge branch '\\(feature\\/[^']*\\)'.*/\\1/p" \
+                | sed -E -n "s/.*Merge branch '(feature\\/[^']*|fix\\/[^']*)'.*/\\1/p" \
                 | sed 's#^feature/##' | sort -u)
     fi
   done

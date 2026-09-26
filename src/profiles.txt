@@ -4,4 +4,4 @@
 # missing skill breaks the command that preloads it.
 full:*
 framing:dm-prd dm-init dm-continue dm-stories dm-stories-review dm-architect dm-design-system dm-feature dm-status dm-help
-delivery:dm-research dm-design dm-plan dm-docs dm-execute dm-review dm-ship dm-release dm-orchestrator dm-status dm-help
+delivery:dm-research dm-design dm-plan dm-docs dm-fix dm-execute dm-review dm-ship dm-release dm-orchestrator dm-status dm-help
