@@ -391,6 +391,21 @@ function initApp(state = {}, origin = "git@gitlab.com:acme/app.git") {
   for (const ns of ["acme", "acme-org"]) {
     mkdirSync(join(bare, ns), { recursive: true });
     git(join(bare, ns), "init", "--bare", "app.git");
+    // Model GitLab's receive side: "push: No one" (push_access_level 0) refuses the push.
+    const hook = join(bare, ns, "app.git/hooks/pre-receive");
+    writeFileSync(
+      hook,
+      `#!/bin/sh
+while read old new ref; do
+  node -e '
+    const s = JSON.parse(require("fs").readFileSync(process.env.DM_GLAB_STUB_STATE, "utf8"));
+    const p = (s.protections || {})[process.argv[1]];
+    if (s.reject_pushes || (p && String(p.push_access_level) === "0")) process.exit(1);
+  ' "\${ref#refs/heads/}" || { echo "GitLab: You are not allowed to push code to protected branches on this project." >&2; exit 1; }
+done
+`,
+    );
+    chmodSync(hook, 0o755);
   }
   const prefixes = ["git@gitlab.com:", "https://gitlab.com/", "git@git.acme.io:"];
   app.env = { ...app.env, GIT_CONFIG_COUNT: String(prefixes.length) };
@@ -425,6 +440,25 @@ test("dm-init on a gitlab origin protects branches, labels the board and writes 
   assert.ok(!existsSync(join(app.d, ".github/workflows/dm-gate.yml")));
   const calls = s.calls.map((c) => c.join(" ")).join("\n");
   assert.doesNotMatch(calls, /repo create/);
+});
+
+test("dm-init on gitlab pushes main and develop before locking pushes", () => {
+  const app = initApp();
+  const res = runRes(INIT, app, ["run", "--yes"]);
+  assert.equal(res.status, 0, res.stderr);
+  const bare = join(app.d, "remote/acme/app.git");
+  const heads = git(bare, "for-each-ref", "--format=%(refname:short)", "refs/heads").trim().split("\n").sort();
+  assert.deepEqual(heads, ["develop", "main"]);
+  assert.equal(readState(app.statePath).protections.main.push_access_level, "0");
+});
+
+test("dm-init on gitlab fails, and never reports done, when the first push is refused", () => {
+  const app = initApp({ reject_pushes: true });
+  const res = runRes(INIT, app, ["run", "--yes"]);
+  assert.notEqual(res.status, 0);
+  assert.match(res.stderr, /push of main to origin failed — init incomplete/);
+  assert.doesNotMatch(res.stdout + res.stderr, /dm-init: done/);
+  assert.equal(readState(app.statePath).protections, undefined);
 });
 
 test("dm-init --no-develop on gitlab protects main only, mergeable by developers", () => {

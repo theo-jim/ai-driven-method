@@ -105,6 +105,17 @@ gl_protect_branch() {
   warn "branch protection for '${branch}' FAILED — ${branch} is NOT protected. Set it in GitLab (Settings → Repository → Protected branches: push No one, merge via merge request) so $( [ "$branch" = main ] && echo "only $integ can merge into main" || echo "feature/* merge requests are required into $branch" ). Do not assume protection is on."
 }
 
+# Fail-closed: a branch that never reached origin leaves the project half-initialized.
+push_branches() {
+  if ! git remote get-url origin >/dev/null 2>&1; then
+    return 0
+  fi
+  git push -u origin main || die "push of main to origin failed — init incomplete, fix and re-run"
+  if [ "$USE_DEVELOP" -eq 1 ]; then
+    git push -u origin develop || die "push of develop to origin failed — init incomplete, fix and re-run"
+  fi
+}
+
 # GitLab cannot restrict which source branch may target a protected branch: the
 # dm-gate CI job enforces "main ← develop" and the ticket review gate instead.
 apply_rulesets() {
@@ -116,6 +127,8 @@ apply_rulesets() {
     warn "no origin remote — branch protection NOT applied"
     return 0
   fi
+  # Push first: "push: No one" would refuse the very first push of main/develop.
+  push_branches
   if [ "$USE_DEVELOP" -eq 1 ]; then
     gl_protect_branch main 40
     gl_protect_branch develop 30
