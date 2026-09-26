@@ -10,6 +10,11 @@ has one (`.dm/config.json` → `"develop": true`, the default), otherwise `main`
 directly. Resolve it for the current repo with
 `.dm/lib/dm-gate.sh default-integration-branch`.
 
+The code host is GitHub or GitLab (`.dm/config.json` → `"platform"`, set by `/dm-init`).
+"PR" means a GitHub pull request or a GitLab merge request. Pull/merge request and Issue
+calls go through `.dm/lib/dm-vcs.sh`, never a raw `gh` or `glab`, so every command works on
+both.
+
 No code is written before the story has a validated plan (`/dm-plan`) and the **child ticket** is `ready`. No feature ships before a passed review (`/dm-review`). `ready` is child-only — a parent US never uses it.
 
 ### Quick Fix mode — exception to the pipeline
@@ -54,7 +59,7 @@ there, coordinate ownership or stop; never overlap edits.
 
 ## Pipeline (commands)
 - `/dm-prd`        frames the product: clone an existing SaaS **or** greenfield (WHAT + WHY). Not kill-only.
-- `/dm-init`       GitHub remote, `main` (+ optional `develop`), Project board, wiki, `VERSION`, CI
+- `/dm-init`       GitHub or GitLab remote, `main` (+ optional `develop`), board, wiki, `VERSION`, CI
 - `/dm-stories`    breaks it down into shippable user stories (parent Issues)
 - `/dm-stories-review`  reviews the breakdown against the PRD perimeter (stories-reviewer subagent)
 - `/dm-architect`  sets the technical HOW + the conventions (fills `<< IP Mike >>` below)
@@ -65,7 +70,7 @@ there, coordinate ownership or stop; never overlap edits.
 - `/dm-docs`       product page `docs/product/<story-id>.md` (wiki publish is release)
 - `/dm-execute`    implements a **ticket** in TDD (implementer subagent)
 - `/dm-review`     quality-bar review + gate (reviewer subagent)
-- `/dm-ship`       opens the PR into the integration branch; merge per the ship strategy (manual by default)
+- `/dm-ship`       opens the PR (GitLab: merge request) into the integration branch; merge per the ship strategy (manual by default)
 - `/dm-release`    production: merge the integration branch → `main` (skipped when there is no `develop` — tickets already land on `main`), semver, wiki, board `shipped`
 
 Utilities:
@@ -80,8 +85,8 @@ One user story = Research → Design → Plan (child tickets) → Docs → then 
 
 | Branch | Role | Rule |
 | --- | --- | --- |
-| `main` | production | only updated from the integration branch (GitHub branch protection is the real guarantee) |
-| `develop` | integration — **optional** (`.dm/config.json` → `"develop"`, default `true`) | PRs from `feature/*`; Quick Fix lands here. When absent, `feature/*` and Quick Fix target `main` directly. |
+| `main` | production | only updated from the integration branch (server-side branch protection on GitHub / GitLab is the real guarantee) |
+| `develop` | integration — **optional** (`.dm/config.json` → `"develop"`, default `true`) | PRs/MRs from `feature/*`; Quick Fix lands here. When absent, `feature/*` and Quick Fix target `main` directly. |
 | `feature/<story-id>` | story framing (research, design, plan, product doc) | docs only, created from the integration branch |
 | `feature/<story-id>/<ticket-id>` | one child ticket | implementation worktree, created from the integration branch |
 
@@ -123,12 +128,12 @@ agent and no main context may edit, checkout or stash in it.
 - `/dm-ship` refuses to run unless that file exists and contains the line `Ship allowed: yes`. No file, no line, or `no` → ship blocked. No exceptions.
 - After a blocked review, `/dm-execute` runs in fix mode: the review findings are fed to the implementer and fixed before anything else.
 - A plan executes only if its frontmatter says `validated: yes` — set by the human validation checkpoint (/dm-plan or the orchestrator), never by the file merely existing. /dm-execute is fail-closed on it.
-- `dm-gate.sh` resolves the integration branch (`develop` or `main` — see `.dm/config.json`) and treats `main` as production. Client-side pre-push refuses updates to `main` that don't come from the integration branch; GitHub branch protection is the real guarantee for `main`.
+- `dm-gate.sh` resolves the integration branch (`develop` or `main` — see `.dm/config.json`) and treats `main` as production. Client-side pre-push refuses updates to `main` that don't come from the integration branch; server-side branch protection (GitHub or GitLab) is the real guarantee for `main`.
 
 ## Ship strategy
 Merge mode: manual   (manual | auto — default: manual)
 Target of `/dm-ship`: **the integration branch** (per ticket) — `develop` if the project has one, otherwise `main` directly. When targeting `develop`, production (`main`) is updated only by releasing `develop` → `main`.
-- manual: /dm-ship opens the PR into the integration branch and stops. Merging is a human decision (review on GitHub, protected branch, CI). After the merge, rerun /dm-ship to confirm cleanup. Parent US moves to `test` only when every child is `test` or `shipped`.
+- manual: /dm-ship opens the PR into the integration branch and stops. Merging is a human decision (review on GitHub / GitLab, protected branch, CI). After the merge, rerun /dm-ship to confirm cleanup. Parent US moves to `test` only when every child is `test` or `shipped`.
 - auto: /dm-ship merges into the integration branch immediately after the gate. Only for solo flows where running /dm-ship IS the decision.
 
 ## Design
@@ -144,7 +149,7 @@ All pipeline data lives in markdown files under docs/, versioned by git. No data
 
 - Framing docs — docs/prd.md, docs/stories.md, docs/reviews/stories.md, docs/architecture.md, docs/design-system.md: land on the integration branch (then `main` via release, or directly on `main` when there is no `develop`). (docs/reviews/stories.md reviews the breakdown, not a story: it is a framing doc.)
 - Story docs — docs/research/<id>.md, docs/designs/<id>* (brief, md, html), docs/plans/<id>.md, docs/product/<id>.md: committed on `feature/<id>`, then into the integration branch.
-- Ticket reviews — docs/reviews/<story-id>/<ticket-id>.md: committed on the ticket branch; /dm-ship commits the review. Every ticket PR carries its review.
+- Ticket reviews — docs/reviews/<story-id>/<ticket-id>.md: committed on the ticket branch; /dm-ship commits the review. Every ticket PR/MR carries its review.
 - Task progress — the checkboxes in docs/plans/<id>.md: the implementer ticks each **ticket** task as it lands. The plan file is the live progress tracker, never a commit trigger.
 - Estimates — each child ticket has `size` (XS–XL) and `estimate` (person-days, 0.5 steps). US total = sum. **Remaining person-days** = sum of estimates of children not yet `test` or `shipped` (`/dm-status`). No actuals in V1.
 - Commits — **one commit per ticket** (squash into the integration branch). A second commit only for something you would want to revert on its own (typically a migration). One release = one squash commit on `main`.
@@ -154,5 +159,5 @@ All pipeline data lives in markdown files under docs/, versioned by git. No data
 << IP Mike: boilerplate structure, stack, patterns, naming, commit rules. >>
 
 ## Definition of Done (per ticket / release)
-- Ticket: single PR into the integration branch, structured description, readable diff, passing tests, review passed (no open critical or major), merged to the integration branch
+- Ticket: single PR/MR into the integration branch, structured description, readable diff, passing tests, review passed (no open critical or major), merged to the integration branch
 - Release: the integration branch → `main` (skipped when there is no `develop`), version bumped, deployed to production

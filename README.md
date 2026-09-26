@@ -8,13 +8,13 @@ A fork of [killer-saas](https://github.com/MikeCodeur/killer-saas) by [Mike Code
 Commands: `/dm-*`.
 
 driven keeps the original pipeline (no direct coding, file gates, subagents)
-and adds: hybrid PRD (clone or greenfield), Grok install, GitHub board + wiki,
+and adds: hybrid PRD (clone or greenfield), Grok install, GitHub or GitLab board + wiki,
 `main`/`develop` flow (`develop` optional per project), a stricter quality bar,
 and semver on release.
 
 See [NOTICE](NOTICE), [DOC.md](DOC.md), [CHANGELOG.md](CHANGELOG.md) and [RELEASING.md](RELEASING.md).
 
-A complete agentic pipeline for product delivery: frame a hybrid PRD (clone an existing SaaS or greenfield), cut shippable user stories and child tickets, enforce quality on a GitHub board + wiki + `main`/`develop` flow, and release with semver.
+A complete agentic pipeline for product delivery: frame a hybrid PRD (clone an existing SaaS or greenfield), cut shippable user stories and child tickets, enforce quality on a GitHub or GitLab board + wiki + `main`/`develop` flow, and release with semver.
 One method = a suite of commands. One principle = no direct coding.
 
 Small presentation or copy adjustments can use the explicit **Quick Fix**
@@ -39,7 +39,7 @@ mutating nothing. Then the normal framing resumes at `/dm-prd` (brownfield mode)
 
 `/dm-prd` → `/dm-init` → `/dm-stories` → `/dm-stories-review` → `/dm-architect` → `/dm-design-system`
 
-Hybrid PRD: clone an existing SaaS **or** greenfield. Then board, wiki, `main` (+ optional `develop`).
+Hybrid PRD: clone an existing SaaS **or** greenfield. Then board, wiki, `main` (+ optional `develop`) on GitHub or GitLab.
 
 ### Per story — docs on `feature/<story-id>`
 
@@ -51,7 +51,16 @@ Story branches are docs only. `ready` is **child-only**.
 
 `/dm-execute <story> <ticket>` → `/dm-review <story> <ticket>` → `/dm-ship <story> <ticket>`
 
-One worktree, one branch, one commit, one PR per ticket. Child must be `ready`.
+One worktree, one branch, one commit, one PR (GitLab: merge request) per ticket. Child must be `ready`.
+
+### GitHub or GitLab
+
+`/dm-init` picks the code host from `origin` (or `--platform github|gitlab`, plus
+`--host` for a self-managed GitLab) and records it in `.dm/config.json`. GitHub runs on
+`gh`: Project V2 board, branch protection + rulesets, pull requests. GitLab runs on
+`glab`: one `dm::<status>` label per board status shown on an Issue Board, protected
+branches, merge requests, and the gate as a GitLab CI job. The commands are the same on
+both — see [DOC.md](DOC.md#github-or-gitlab).
 
 ### After v1
 
@@ -225,7 +234,7 @@ On **Codex** / **Grok**, the same steps run as skills or commands (e.g. `dm-prd`
 
 ## Manual smoke
 
-Method CI does not live-mutate GitHub. After install, smoke `/dm-init` on a **throwaway** repo:
+Method CI does not live-mutate GitHub or GitLab (tests run against `gh` / `glab` stubs). After install, smoke `/dm-init` on a **throwaway** repo — on each platform you use:
 
     mkdir /tmp/dm-smoke && cd /tmp/dm-smoke && git init -b main
     # install driven into this directory (see Install), then in the tool:
