@@ -22,6 +22,10 @@ fi
 # Flatten args for matching
 args="$*"
 
+# Single source of truth for the Status field options, shared by
+# field-create and field-list so they can't drift apart.
+STATUS_OPTIONS='[{"name":"backlog","id":"opt1"},{"name":"ready","id":"opt2"},{"name":"in progress","id":"opt3"},{"name":"test","id":"opt4"},{"name":"shipped","id":"opt5"}]'
+
 case "$args" in
   *"repo create"*)
     node -e '
@@ -54,10 +58,10 @@ case "$args" in
     echo '{"ok":true}'
     ;;
   *"project field-create"*)
-    echo '{"id":"FIELD_status","options":[{"name":"backlog","id":"opt1"},{"name":"ready","id":"opt2"},{"name":"in progress","id":"opt3"},{"name":"test","id":"opt4"},{"name":"shipped","id":"opt5"}]}'
+    echo "{\"id\":\"FIELD_status\",\"options\":${STATUS_OPTIONS}}"
     ;;
   *"project field-list"*)
-    echo '[{"id":"FIELD_status","name":"Status","options":[{"name":"backlog","id":"opt1"},{"name":"ready","id":"opt2"},{"name":"in progress","id":"opt3"},{"name":"test","id":"opt4"},{"name":"shipped","id":"opt5"}]}]'
+    echo "[{\"id\":\"FIELD_status\",\"name\":\"Status\",\"options\":${STATUS_OPTIONS}}]"
     ;;
   *"branches/"*"/protection"*)
     node -e '
