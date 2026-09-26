@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# dm-board — GitHub Issues + Project V2 status helpers.
+# dm-board — board status helpers: GitHub Issues + Project V2, or GitLab Issues +
+# status labels (dm-board-gitlab.sh overrides the platform functions below).
 # Status labels exact: backlog | ready | in progress | test | shipped
 # Parent never uses ready.
 #
@@ -16,6 +17,19 @@ SCRIPT_DIR="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/dm-config.sh"
 
 gh_bin() { command -v gh; }
+
+# dm_config_load, then swap in the GitLab implementations when the project is on GitLab.
+board_load() {
+  dm_config_load
+  if [ "${DM_PLATFORM:-github}" = gitlab ]; then
+    if [ ! -f "$SCRIPT_DIR/dm-board-gitlab.sh" ]; then
+      echo "dm-board: platform gitlab but $SCRIPT_DIR/dm-board-gitlab.sh is missing — reinstall .dm/lib" >&2
+      return 1
+    fi
+    # shellcheck source=dm-board-gitlab.sh
+    source "$SCRIPT_DIR/dm-board-gitlab.sh"
+  fi
+}
 
 issues_json() {
   "$(gh_bin)" issue list \
@@ -77,7 +91,7 @@ issue_project_item_id() {
 cmd_status_get() {
   local key="${1:-}"
   [ -n "$key" ] || { echo "usage: status-get <issue-key>" >&2; return 1; }
-  dm_config_load
+  board_load
   issue_status_name "$key"
   printf '\n'
 }
@@ -105,8 +119,12 @@ cmd_status_set() {
       fi
       ;;
   esac
-  dm_config_load
-  local item_id option_id
+  board_load
+  board_set_status "$key" "$status"
+}
+
+board_set_status() {
+  local key="$1" status="$2" item_id option_id
   item_id="$(issue_project_item_id "$key")"
   option_id="$(dm_config_status_option_id "$status")"
   "$(gh_bin)" project item-edit \
@@ -127,7 +145,7 @@ cmd_require_ready() {
       return 1
       ;;
   esac
-  dm_config_load
+  board_load
   local st
   if ! st="$(issue_status_name "$key")"; then
     return 1
@@ -167,7 +185,7 @@ cmd_parent_sync() {
       return 1
       ;;
   esac
-  dm_config_load
+  board_load
   local children_statuses desired current
   children_statuses="$(
     issues_json | node -e '
@@ -257,6 +275,36 @@ fallback_parent_link() {
   rm -f "$tmp"
 }
 
+issue_create() {
+  local title="$1" body_file="$2"
+  "$(gh_bin)" issue create -R "$(dm_config_repo)" -t "$title" -F "$body_file"
+}
+
+issue_rename() {
+  local number="$1" title="$2"
+  "$(gh_bin)" issue edit "$number" -R "$(dm_config_repo)" --title "$title" >/dev/null
+}
+
+issue_url() {
+  printf 'https://github.com/%s/issues/%s' "$(dm_config_repo)" "$1"
+}
+
+# Link child <key> under the parent Issue JSON; exit 1 when the link could not be made.
+link_sub_issue() {
+  local parent_raw="$1" key="$2" parent_id child_id
+  parent_id="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).id||"")' "$parent_raw")"
+  child_id="$(node -e '
+    const issues=JSON.parse(require("fs").readFileSync(0,"utf8"));
+    const key=process.argv[1];
+    const prefix="["+key+"]";
+    const hit=issues.find(i=> (i.title||"")===prefix || (i.title||"").startsWith(prefix+" "));
+    process.stdout.write(hit && hit.id ? hit.id : "");
+  ' "$key" <<<"$(issues_json)" 2>/dev/null || true)"
+  [ -n "$parent_id" ] && [ -n "$child_id" ] || return 1
+  "$(gh_bin)" api graphql -f query='mutation($p:ID!,$c:ID!){addSubIssue(input:{issueId:$p,subIssueId:$c}){issue{id}}}' \
+    -f p="$parent_id" -f c="$child_id" >/dev/null 2>&1
+}
+
 cmd_issue_create_us() {
   local story_id="${1:-}" title="${2:-}" body_file="${3:-}"
   [ -n "$story_id" ] && [ -n "$title" ] && [ -n "$body_file" ] || {
@@ -264,10 +312,10 @@ cmd_issue_create_us() {
     return 1
   }
   [ -f "$body_file" ] || { echo "dm-board: body file missing: $body_file" >&2; return 1; }
-  dm_config_load
+  board_load
   local full_title url
   full_title="[${story_id}] ${title}"
-  url="$("$(gh_bin)" issue create -R "$(dm_config_repo)" -t "$full_title" -F "$body_file")"
+  url="$(issue_create "$full_title" "$body_file")"
   add_issue_to_project_backlog "$url" "$story_id"
 }
 
@@ -280,12 +328,11 @@ cmd_issue_adopt() {
     echo "usage: issue-adopt <issue-key> <issue-number> <title>" >&2
     return 1
   }
-  dm_config_load
-  local repo full_title url
-  repo="$(dm_config_repo)"
+  board_load
+  local full_title url
   full_title="[${key}] ${title}"
-  "$(gh_bin)" issue edit "$number" -R "$repo" --title "$full_title" >/dev/null
-  url="https://github.com/${repo}/issues/${number}"
+  issue_rename "$number" "$full_title"
+  url="$(issue_url "$number")"
   add_issue_to_project_backlog "$url" "$key"
 }
 
@@ -296,32 +343,21 @@ cmd_issue_create_ticket() {
     return 1
   }
   [ -f "$body_file" ] || { echo "dm-board: body file missing: $body_file" >&2; return 1; }
-  dm_config_load
-  local key full_title url parent_raw parent_id child_num
+  board_load
+  local key full_title url parent_raw child_num
   key="${story_id}/${ticket_id}"
   full_title="[${key}] ${title}"
-  url="$("$(gh_bin)" issue create -R "$(dm_config_repo)" -t "$full_title" -F "$body_file")"
+  url="$(issue_create "$full_title" "$body_file")"
   child_num="$(add_issue_to_project_backlog "$url" "$key")"
   # Link as sub-issue when parent exists; on failure write Parent: #<n> + label ticket
   if parent_raw="$(find_issue_json "$story_id" 2>/dev/null)"; then
-    parent_id="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).id||"")' "$parent_raw")"
-    local parent_num child_id sub_ok=0
+    local parent_num sub_ok=0
     parent_num="$(node -e 'process.stdout.write(String(JSON.parse(process.argv[1]).number||""))' "$parent_raw")"
-    child_id="$(node -e '
-      const issues=JSON.parse(require("fs").readFileSync(0,"utf8"));
-      const key=process.argv[1];
-      const prefix="["+key+"]";
-      const hit=issues.find(i=> (i.title||"")===prefix || (i.title||"").startsWith(prefix+" "));
-      process.stdout.write(hit && hit.id ? hit.id : "");
-    ' "$key" <<<"$(issues_json)" 2>/dev/null || true)"
-    if [ -n "$parent_id" ] && [ -n "$child_id" ]; then
-      if "$(gh_bin)" api graphql -f query='mutation($p:ID!,$c:ID!){addSubIssue(input:{issueId:$p,subIssueId:$c}){issue{id}}}' \
-        -f p="$parent_id" -f c="$child_id" >/dev/null 2>&1; then
-        sub_ok=1
-      fi
+    if link_sub_issue "$parent_raw" "$key"; then
+      sub_ok=1
     fi
     if [ "$sub_ok" -eq 0 ] && [ -n "$parent_num" ]; then
-      echo "dm-board: WARNING: addSubIssue failed for $key — writing Parent: #${parent_num} and label ticket" >&2
+      echo "dm-board: WARNING: sub-issue link failed for $key — writing Parent: #${parent_num} and label ticket" >&2
       fallback_parent_link "$child_num" "$parent_num" "$body_file"
     fi
   fi
