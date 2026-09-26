@@ -215,6 +215,6 @@ copy_ci_workflow() {
   if [ ! -f .gitlab-ci.yml ]; then
     printf 'include:\n  - local: .gitlab/ci/dm-gate.yml\n' >.gitlab-ci.yml
   elif ! grep -q '\.gitlab/ci/dm-gate\.yml' .gitlab-ci.yml; then
-    warn ".gitlab-ci.yml exists — add 'include: [{ local: .gitlab/ci/dm-gate.yml }]' to run the dm-gate job"
+    warn ".gitlab-ci.yml exists — add 'include: [{ local: .gitlab/ci/dm-gate.yml }]' to run the dm-gate job (its stages: must list test)"
   fi
 }

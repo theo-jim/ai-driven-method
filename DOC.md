@@ -239,7 +239,7 @@ board helpers load `dm-board-gitlab.sh` on a GitLab project.
 | Parent / child | sub-issues (fallback `Parent: #n` + label `ticket`) | issue links (same fallback) |
 | Ship / release | pull request | merge request — `dm-vcs.sh pr-create / pr-state / pr-merge` |
 | Wiki | `<repo>.wiki.git`, `Home.md` | `<project>.wiki.git`, `home.md`; token from `GITLAB_TOKEN` / `glab` |
-| CI gate | `.github/workflows/dm-gate.yml` | `.gitlab/ci/dm-gate.yml`, included from `.gitlab-ci.yml` |
+| CI gate | `.github/workflows/dm-gate.yml` | `.gitlab/ci/dm-gate.yml`, included from `.gitlab-ci.yml`; runs in the `test` stage, so a project with its own `stages:` must list `test` |
 
 "PR" in the commands means a GitHub pull request or a GitLab merge request.
 

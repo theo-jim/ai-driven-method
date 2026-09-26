@@ -2,6 +2,9 @@
 # included from .gitlab-ci.yml. GitLab twin of dm-gate.yml (GitHub Actions).
 # Branch names reach the script only as CI variables (environment), never as
 # text substituted into it.
+# Requires a `test` stage: present in GitLab's default stages; a project that
+# declares its own `stages:` must list `test` (or change `stage:` below).
+# Omitting `stage:` would still mean `test`, and `.pre` alone starts no pipeline.
 dm-gate:
   image: node:20
   stage: test
