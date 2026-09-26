@@ -246,6 +246,27 @@ test("issue-create-ticket writes Parent and ticket label when sub-issue fails", 
   assert.ok((child.labels || []).includes("ticket"));
 });
 
+test("issue-create-ticket with story_id 'fix' creates a standalone item and skips parent-linking", () => {
+  const { d, statePath, bin } = appDir([]);
+  const body = join(d, "body.md");
+  writeFileSync(body, "fix body\n");
+  runBoard(d, bin, statePath, [
+    "issue-create-ticket",
+    "fix",
+    "null-cart-crash",
+    "Null cart crash",
+    body,
+  ]);
+  const after = JSON.parse(readFileSync(statePath, "utf8"));
+  const issue = after.issues.find((i) =>
+    (i.title || "").startsWith("[fix/null-cart-crash]"),
+  );
+  assert.ok(issue, "fix issue created");
+  assert.equal(issue.title, "[fix/null-cart-crash] Null cart crash");
+  assert.doesNotMatch(issue.body || "", /Parent:/);
+  assert.ok(!(issue.labels || []).includes("ticket"));
+});
+
 test("item-add is retried once", () => {
   const { d, statePath, bin } = appDir([]);
   const state = JSON.parse(readFileSync(statePath, "utf8"));
