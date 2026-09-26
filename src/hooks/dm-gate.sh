@@ -4,9 +4,9 @@
 # the gates live in the repo, not in a tool's per-command permissions.
 #
 # Branches (app git flow):
-#   main     = production (only updated from the integration branch; GitHub branch
+#   main     = production (only updated from the integration branch; server-side branch
 #              protection is the real guarantee)
-#   develop  = integration (optional — see .dm/config.json "develop"; feature PRs
+#   develop  = integration (optional — see .dm/config.json "develop"; feature PRs/MRs
 #              land here when present, otherwise feature/* targets main directly)
 #   feature/<story-id>              = story framing (docs only)
 #   feature/<story-id>/<ticket-id>  = ticket implementation
@@ -203,11 +203,11 @@ pre_push() {
     # Production: when there is a distinct integration branch, only it may update
     # main. When there isn't (integ == prod, e.g. no develop), skip this block so
     # the integration checks below run for main itself instead of being short-
-    # circuited by the `continue`. Client-side hint — GitHub branch protection is
+    # circuited by the `continue`. Client-side hint — server-side (GitHub/GitLab) branch protection is
     # authoritative either way.
     if [ "$remote_ref" = "refs/heads/$prod" ] && [ "$integ" != "$prod" ]; then
       if [ "$local_ref" != "refs/heads/$integ" ]; then
-        echo "dm-gate: refusing push to $prod from ${local_ref#refs/heads/} — only $integ may update production. (GitHub branch protection is the real guarantee for $prod.)" >&2
+        echo "dm-gate: refusing push to $prod from ${local_ref#refs/heads/} — only $integ may update production. (server-side branch protection on GitHub/GitLab is the real guarantee for $prod.)" >&2
         rc=1
       fi
       continue

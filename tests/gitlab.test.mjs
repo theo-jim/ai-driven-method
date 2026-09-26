@@ -530,3 +530,22 @@ test("dm-gate.gitlab-ci.yml mirrors the GitHub gate on merge requests", () => {
   assert.match(t, /CHANGELOG\.md/);
   assert.match(t, /head="\$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME"/);
 });
+
+// --- commands -------------------------------------------------------------
+
+test("commands route pull/merge requests through dm-vcs, never a raw gh pr / glab mr", () => {
+  for (const name of ["dm-ship", "dm-release", "dm-continue", "dm-plan", "dm-orchestrator"]) {
+    const t = readFileSync(join(ROOT, `src/commands/${name}.md`), "utf8");
+    assert.doesNotMatch(t, /`gh (pr|issue) |`glab (mr|issue) |^\s*gh (pr|issue) /m, name);
+  }
+  const ship = readFileSync(join(ROOT, "src/commands/dm-ship.md"), "utf8");
+  assert.match(ship, /dm-vcs\.sh pr-create "\$INTEG"/);
+  assert.match(ship, /dm-vcs\.sh pr-state feature\/<story-id>\/<ticket-id>` must print exactly `MERGED`/);
+  assert.match(ship, /dm-vcs\.sh pr-merge/);
+  const release = readFileSync(join(ROOT, "src/commands/dm-release.md"), "utf8");
+  assert.match(release, /dm-vcs\.sh pr-open-heads main/);
+  assert.match(release, /dm-vcs\.sh pr-create main/);
+  const init = readFileSync(join(ROOT, "src/commands/dm-init.md"), "utf8");
+  assert.match(init, /--platform github\|gitlab/);
+  assert.match(init, /glab auth login/);
+});

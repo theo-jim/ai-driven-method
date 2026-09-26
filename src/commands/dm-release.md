@@ -8,6 +8,8 @@ allowed-tools:
 # dm-release — Production release (integration branch → `main`)
 
 Resolve the integration branch once: `INTEG="$(bash .dm/lib/dm-gate.sh default-integration-branch)"`.
+Pull/merge request calls go through `bash .dm/lib/dm-vcs.sh` (`gh` on GitHub, `glab` on
+GitLab); "PR" means either.
 - If `$INTEG` is `develop`: work from the repository base on branch `develop`. Never release from a feature branch.
 - If `$INTEG` is `main` (no `develop`): tickets already land on `main` directly — there
   is no branch to merge. This command only bumps VERSION, tags, publishes the wiki,
@@ -32,7 +34,7 @@ git fetch origin main "$INTEG" 2>/dev/null || git fetch origin main
 main_ver="$(git show origin/main:VERSION 2>/dev/null | tr -d '[:space:]' || true)"
 head_ver="$(tr -d '[:space:]' < VERSION)"
 if [ -n "$main_ver" ] && [ "$head_ver" != "$main_ver" ]; then
-  open="$(gh pr list --base main --state open --json url,headRefName --jq ".[] | select(.headRefName | startswith(\"release/\") or . == \"$INTEG\") | .url" | head -1)"
+  open="$(bash .dm/lib/dm-vcs.sh pr-open-heads main | awk -F'\t' -v integ="$INTEG" '$1 ~ /^release\// || $1 == integ { print $2 }' | head -1)"
   if [ -n "$open" ]; then
     echo "Release already in flight ($open). VERSION is $head_ver vs main $main_ver. Do not bump again — squash-merge that PR."
     exit 1
@@ -53,14 +55,14 @@ ver="$(tr -d '[:space:]' < VERSION)"
 ```bash
 head="$INTEG"
 [ "$INTEG" = main ] && head="release/v$ver"
-gh pr create --base main --head "$head" --title "Release v$ver" --body "…"
+bash .dm/lib/dm-vcs.sh pr-create main "$head" "Release v$ver" <body-file>
 ```
 Do **not** merge in this command unless the user explicitly confirms an auto merge. Default: stop at the open PR.
 
-**Always squash-merge** this PR (`gh pr merge --squash` or the GitHub squash-merge button). One release = one commit on `main`. Never merge-commit the head branch into `main`.
+**Always squash-merge** this PR (`bash .dm/lib/dm-vcs.sh pr-merge <url>`, or the squash option of the GitHub / GitLab merge button). One release = one commit on `main`. Never merge-commit the head branch into `main`.
 
 ## Step 5 — After MERGED only
-Prove merge: `gh pr view <url> --json state --jq .state` must be `MERGED`. Then:
+Prove merge: `bash .dm/lib/dm-vcs.sh pr-state <url>` must print `MERGED`. Then:
 
 1. Fetch `origin/main` and tag **that** SHA (the squash commit on `main`), never the head branch's SHA:
    ```bash

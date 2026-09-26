@@ -21,7 +21,7 @@ Derive the state from the files and the board — never guess. Bash is for read-
    - `bash .dm/lib/dm-board.sh status-get <story-id>/<ticket-id>`
    - size, estimate
    - review: grep `^Ship allowed:` docs/reviews/<story>/<ticket>.md
-   - PR / ship state vs the integration branch
+   - PR/MR / ship state vs the integration branch
 4. Start with one-line summary: X shipped / Y in test / Z in progress / W backlog. Compact tables: US row, then indented ticket rows. Next command is the most useful one (often "move t02 to ready" or `/dm-execute s01 t01` or `/dm-release`). When every story is `shipped` and nothing is in flight, the product is released and the useful next command is `/dm-feature <slug>` — say so rather than reporting an empty pipeline.
 5. Decisions: if docs/decisions/ exists, mention ADR count and the latest one.
 

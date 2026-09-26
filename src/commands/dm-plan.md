@@ -45,7 +45,7 @@ Proceed as follows:
      bash .dm/lib/dm-board.sh issue-create-ticket <story-id> <ticket-id> "<title> (SIZE, Nd)" <body-file>
      ```
      Title includes size and estimate (e.g. `(M, 1.5d)`). Body includes `Size:` and `Estimate:` lines plus the ticket scope.
-     Update the **parent** US Issue body with the sum of person-days and the size mix (best-effort via `gh issue edit` when the parent exists).
+     Update the **parent** US Issue body with the sum of person-days and the size mix (best-effort via `bash .dm/lib/dm-vcs.sh issue-body-set <number> <body-file>` when the parent exists).
    - Do **not** call `require-ready` in this command.
 
 If the plan file already exists when the command runs, skip straight to the validation checkpoint: show the summary and ask.
