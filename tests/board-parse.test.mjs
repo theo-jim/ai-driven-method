@@ -267,6 +267,54 @@ test("issue-create-ticket with story_id 'fix' creates a standalone item and skip
   assert.ok(!(issue.labels || []).includes("ticket"));
 });
 
+test("issue-create-ticket with story_id 'fix' stays standalone even when an issue titled exactly '[fix]' exists", () => {
+  const { d, statePath, bin } = appDir([
+    { title: "[fix]", number: 5, id: "I_fix_exact", projectItems: [] },
+  ]);
+  const body = join(d, "body.md");
+  writeFileSync(body, "fix body\n");
+  runBoard(d, bin, statePath, [
+    "issue-create-ticket",
+    "fix",
+    "null-cart-crash",
+    "Null cart crash",
+    body,
+  ]);
+  const after = JSON.parse(readFileSync(statePath, "utf8"));
+  const issue = after.issues.find((i) =>
+    (i.title || "").startsWith("[fix/null-cart-crash]"),
+  );
+  assert.ok(issue, "fix issue created");
+  assert.equal(issue.title, "[fix/null-cart-crash] Null cart crash");
+  assert.doesNotMatch(issue.body || "", /Parent:/);
+  assert.ok(!(issue.labels || []).includes("ticket"));
+  assert.equal(after.graphql_calls || 0, 0, "addSubIssue must never be called for a fix ticket");
+});
+
+test("issue-create-ticket with story_id 'fix' stays standalone even when an issue titled '[fix] Legacy tracking' exists", () => {
+  const { d, statePath, bin } = appDir([
+    { title: "[fix] Legacy tracking", number: 6, id: "I_fix_legacy", projectItems: [] },
+  ]);
+  const body = join(d, "body.md");
+  writeFileSync(body, "fix body\n");
+  runBoard(d, bin, statePath, [
+    "issue-create-ticket",
+    "fix",
+    "null-cart-crash",
+    "Null cart crash",
+    body,
+  ]);
+  const after = JSON.parse(readFileSync(statePath, "utf8"));
+  const issue = after.issues.find((i) =>
+    (i.title || "").startsWith("[fix/null-cart-crash]"),
+  );
+  assert.ok(issue, "fix issue created");
+  assert.equal(issue.title, "[fix/null-cart-crash] Null cart crash");
+  assert.doesNotMatch(issue.body || "", /Parent:/);
+  assert.ok(!(issue.labels || []).includes("ticket"));
+  assert.equal(after.graphql_calls || 0, 0, "addSubIssue must never be called for a fix ticket");
+});
+
 test("item-add is retried once", () => {
   const { d, statePath, bin } = appDir([]);
   const state = JSON.parse(readFileSync(statePath, "utf8"));

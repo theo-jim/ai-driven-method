@@ -212,3 +212,29 @@ test("ship's fix-ticket note drops parent-sync from cleanup", () => {
   const t = readFileSync("src/commands/dm-ship.md", "utf8");
   assert.match(t, /no[\s\S]*`parent-sync`[\s\S]*call/);
 });
+
+test("fix declares the Agent tool, invokes worktree-manager for its own worktree, and commits the validated plan there", () => {
+  const t = readFileSync("src/commands/dm-fix.md", "utf8");
+  const frontmatter = t.split("---")[1];
+  // Without Agent in allowed-tools, the command physically cannot invoke worktree-manager.
+  assert.match(frontmatter, /^\s*-\s*Agent\s*$/m);
+  // Must actually invoke the subagent for its own dedicated worktree, from the integration branch.
+  assert.match(t, /invoke.*worktree-manager|worktree-manager.*invoke/is);
+  assert.match(t, /\.worktrees\/fix\/<id>/);
+  assert.match(t, /branch\s*`?fix\/<id>`?/);
+  assert.match(t, /default-integration-branch/);
+  // Every subsequent read/write must happen inside that worktree, never the repo base directory.
+  assert.match(t, /never[\s\S]{0,40}repository\s+base\s+directory|repository\s+base\s+directory[\s\S]{0,10}never/i);
+  // The validated plan must be committed on fix/<id> so /dm-execute can see it.
+  assert.match(t, /git commit/);
+  assert.match(t, /docs\/plans\/fix-<id>\.md/);
+});
+
+test("fix's worktree-manager step precedes writing the plan file", () => {
+  const t = readFileSync("src/commands/dm-fix.md", "utf8");
+  const wtIdx = t.search(/worktree-manager/);
+  const writeIdx = t.search(/write `docs\/plans\/fix-<id>\.md`/i);
+  assert.ok(wtIdx >= 0, "worktree-manager step must exist");
+  assert.ok(writeIdx >= 0, "plan write step must exist");
+  assert.ok(wtIdx < writeIdx, "worktree-manager must run before the plan is written");
+});
