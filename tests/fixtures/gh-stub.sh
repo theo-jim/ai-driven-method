@@ -7,7 +7,10 @@
 #      "projectItems":[{"id":"PVTI_child","status":{"optionId":"opt2","name":"ready"}}]},
 #     {"title":"[s01-x] Parent","number":1,"id":"I_parent",
 #      "projectItems":[{"id":"PVTI_parent","status":{"optionId":"opt1","name":"backlog"}}]}
-#   ]
+#   ],
+#   "repos": [],
+#   "protections": [],
+#   "rulesets": []
 # }
 set -eu
 STATE="${DM_GH_STUB_STATE:-}"
@@ -20,6 +23,88 @@ fi
 args="$*"
 
 case "$args" in
+  *"repo create"*)
+    node -e '
+      const cp=require("child_process");
+      const fs=require("fs");
+      const path=require("path");
+      const s=JSON.parse(fs.readFileSync(process.env.DM_GH_STUB_STATE,"utf8"));
+      const argv=process.argv.slice(1);
+      const i=argv.indexOf("create");
+      const remote=path.join(path.dirname(process.env.DM_GH_STUB_STATE),"remote.git");
+      if (!fs.existsSync(remote)) cp.execFileSync("git",["init","--bare",remote],{stdio:"ignore"});
+      cp.execFileSync("git",["remote","add","origin",remote],{stdio:"ignore"});
+      s.repos=s.repos||[];
+      s.repos.push({name:argv[i+1]||"",remote});
+      fs.writeFileSync(process.env.DM_GH_STUB_STATE,JSON.stringify(s,null,2));
+    ' "$@"
+    echo '{"name":"app"}'
+    ;;
+  *"project create"*)
+    node -e '
+      const fs=require("fs");
+      const s=JSON.parse(fs.readFileSync(process.env.DM_GH_STUB_STATE,"utf8"));
+      s.projects=s.projects||[];
+      s.projects.push({id:"PVT_test",number:1});
+      fs.writeFileSync(process.env.DM_GH_STUB_STATE,JSON.stringify(s,null,2));
+    '
+    echo '{"id":"PVT_test","number":1}'
+    ;;
+  *"project link"*)
+    echo '{"ok":true}'
+    ;;
+  *"project field-create"*)
+    echo '{"id":"FIELD_status","options":[{"name":"backlog","id":"opt1"},{"name":"ready","id":"opt2"},{"name":"in progress","id":"opt3"},{"name":"test","id":"opt4"},{"name":"shipped","id":"opt5"}]}'
+    ;;
+  *"project field-list"*)
+    echo '[{"id":"FIELD_status","name":"Status","options":[{"name":"backlog","id":"opt1"},{"name":"ready","id":"opt2"},{"name":"in progress","id":"opt3"},{"name":"test","id":"opt4"},{"name":"shipped","id":"opt5"}]}]'
+    ;;
+  *"branches/"*"/protection"*)
+    node -e '
+      const fs=require("fs");
+      const s=JSON.parse(fs.readFileSync(process.env.DM_GH_STUB_STATE,"utf8"));
+      const argv=process.argv.slice(1);
+      const endpoint=argv.find((arg)=>arg.includes("/branches/")&&arg.endsWith("/protection"));
+      const branch=endpoint.match(/\/branches\/([^/]+)\/protection$/)[1];
+      s.protections=s.protections||[];
+      s.protections.push({branch,body:JSON.parse(fs.readFileSync(0,"utf8"))});
+      fs.writeFileSync(process.env.DM_GH_STUB_STATE,JSON.stringify(s,null,2));
+    ' "$@"
+    echo '{}'
+    ;;
+  *"rulesets"*)
+    node -e '
+      const fs=require("fs");
+      const s=JSON.parse(fs.readFileSync(process.env.DM_GH_STUB_STATE,"utf8"));
+      const argv=process.argv.slice(1);
+      const get=(flag)=>{const i=argv.indexOf(flag); return i>=0?argv[i+1]:null;};
+      const method=get("-X")||"GET";
+      const endpoint=argv.find((arg)=>arg.includes("/rulesets"));
+      s.rulesets=s.rulesets||[];
+      if (method==="GET") {
+        const query=get("-q")||"";
+        const match=query.match(/\.name=="([^"]+)/);
+        const ruleset=s.rulesets.find((item)=>item.name===(match&&match[1]));
+        if (ruleset) process.stdout.write(String(ruleset.id));
+      } else {
+        const body=JSON.parse(fs.readFileSync(0,"utf8"));
+        const idMatch=endpoint.match(/\/rulesets\/(.+)$/);
+        const id=idMatch?idMatch[1]:`RS_${s.rulesets.length+1}`;
+        const index=s.rulesets.findIndex((item)=>String(item.id)===id);
+        const ruleset={id,...body};
+        if (index>=0) s.rulesets[index]=ruleset;
+        else s.rulesets.push(ruleset);
+        process.stdout.write(JSON.stringify(ruleset));
+      }
+      fs.writeFileSync(process.env.DM_GH_STUB_STATE,JSON.stringify(s,null,2));
+    ' "$@"
+    ;;
+  *"-q .node_id"*)
+    echo 'REPO_NODE'
+    ;;
+  *"has_wiki"*)
+    echo '{}'
+    ;;
   *"issue list"*)
     node -e '
       const s=JSON.parse(require("fs").readFileSync(process.env.DM_GH_STUB_STATE,"utf8"));
