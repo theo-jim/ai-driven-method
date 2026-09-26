@@ -3,7 +3,7 @@ name: dm-gate
 
 on:
   pull_request:
-    branches: [next, main]
+    branches: [develop, main]
 
 jobs:
   gate:
@@ -13,16 +13,30 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Refuse PRs into main that are not from next
-        if: github.base_ref == 'main' && github.head_ref != 'next'
+      - name: Resolve the integration branch
+        id: cfg
+        run: |
+          integ="$(node -e '
+            const fs = require("fs");
+            try {
+              const cfg = JSON.parse(fs.readFileSync(".dm/config.json", "utf8"));
+              process.stdout.write(cfg.develop === false ? "main" : "develop");
+            } catch (e) {
+              process.stdout.write("develop");
+            }
+          ')"
+          echo "integ=$integ" >> "$GITHUB_OUTPUT"
+
+      - name: Refuse PRs into main that are not from the integration branch
+        if: github.base_ref == 'main' && steps.cfg.outputs.integ == 'develop' && github.head_ref != 'develop'
         env:
           HEAD_REF: ${{ github.head_ref }}
         run: |
-          echo "dm-gate: PRs into main must come from next (got head '$HEAD_REF')"
+          echo "dm-gate: PRs into main must come from develop (got head '$HEAD_REF')"
           exit 1
 
-      - name: Feature PR into next — ticket ship gate or framing docs-only
-        if: github.base_ref == 'next' && startsWith(github.head_ref, 'feature/')
+      - name: Feature PR into the integration branch — ticket ship gate or framing docs-only
+        if: github.base_ref == steps.cfg.outputs.integ && startsWith(github.head_ref, 'feature/')
         env:
           HEAD_REF: ${{ github.head_ref }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -66,8 +80,8 @@ jobs:
               ;;
           esac
 
-      - name: Release PR next → main — VERSION bumped + changelog
-        if: github.base_ref == 'main' && github.head_ref == 'next'
+      - name: Release PR develop → main — VERSION bumped + changelog
+        if: github.base_ref == 'main' && steps.cfg.outputs.integ == 'develop' && github.head_ref == 'develop'
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
@@ -76,7 +90,7 @@ jobs:
           base_ver="$(git show "origin/${BASE_REF}:VERSION" 2>/dev/null | tr -d '[:space:]' || true)"
           head_ver="$(tr -d '[:space:]' < VERSION 2>/dev/null || true)"
           if [ -z "$head_ver" ]; then
-            echo "dm-gate: VERSION missing on next"
+            echo "dm-gate: VERSION missing on develop"
             exit 1
           fi
           if [ "$head_ver" = "$base_ver" ]; then

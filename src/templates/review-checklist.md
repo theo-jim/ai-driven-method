@@ -1,7 +1,7 @@
 # Review — Ticket <story-id>/<ticket-id>
 
 > Fresh-context review. Each issue classified: critical / major / minor.
-> Diff reviewed: `git diff next...feature/<story-id>/<ticket-id>`
+> Diff reviewed: `git diff <integration-branch>...feature/<story-id>/<ticket-id>` (resolve `<integration-branch>` with `.dm/lib/dm-gate.sh default-integration-branch`)
 > Report path: `docs/reviews/<story-id>/<ticket-id>.md`
 
 ## Plan compliance

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# driven — installed via core.hooksPath. Refuses non-next pushes into main; blocks
-# integrating a ticket into next without Ship allowed: yes. Reads
+# driven — installed via core.hooksPath. Refuses pushes into main that don't come
+# from the integration branch; blocks integrating a ticket into the integration
+# branch without Ship allowed: yes. Reads
 # <local ref> <local sha> <remote ref> <remote sha> on stdin.
 set -euo pipefail
 exec "$(dirname "$0")/dm-gate.sh" pre-push

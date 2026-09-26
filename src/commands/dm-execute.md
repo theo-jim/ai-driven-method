@@ -34,7 +34,7 @@ If you can't invoke the Agent tool, stop and report the error. Don't improvise.
    ```bash
    bash .dm/lib/dm-board.sh status-set <story-id>/<ticket-id> "in progress"
    ```
-4. Invoke `worktree-manager` for `.worktrees/<story-id>/<ticket-id>` on `feature/<story-id>/<ticket-id>` from **`next`**. Continue only after the absolute path and exact branch are confirmed.
+4. Invoke `worktree-manager` for `.worktrees/<story-id>/<ticket-id>` on `feature/<story-id>/<ticket-id>` from **the integration branch**. Continue only after the absolute path and exact branch are confirmed.
 5. From that worktree, read docs/plans/<story-id>.md. Frontmatter must contain `validated: yes`. Otherwise STOP.
 6. Ticket dependencies in the plan that are not yet `test` or `shipped` → STOP and name them.
 7. If `docs/reviews/<story-id>/<ticket-id>.md` contains `Ship allowed: no`, this is a FIX run: those findings come first.

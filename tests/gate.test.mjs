@@ -34,7 +34,7 @@ const BOARD_CONFIG = {
   },
 };
 
-function repo() {
+function repo({ develop = true } = {}) {
   const d = mkdtempSync(join(tmpdir(), "dm-gate-"));
   execSync("git init -b main && git config user.email t@t && git config user.name t", {
     cwd: d,
@@ -42,8 +42,15 @@ function repo() {
   });
   writeFileSync(join(d, "README"), "x");
   execSync("git add README && git commit -m i", { cwd: d, stdio: "pipe" });
-  execSync("git branch next", { cwd: d, stdio: "pipe" });
+  if (develop) {
+    execSync("git branch develop", { cwd: d, stdio: "pipe" });
+  }
   return d;
+}
+
+function writeDmConfig(d, fields) {
+  mkdirSync(join(d, ".dm"), { recursive: true });
+  writeFileSync(join(d, ".dm/config.json"), JSON.stringify(fields, null, 2));
 }
 
 function withBoard(d, issues) {
@@ -152,13 +159,27 @@ test("ship-allowed accepts ticket review path", () => {
   assert.equal(runGate(d, ["ship-allowed", "s01-x/t01-y"]), "");
 });
 
-test("default-integration-branch prints next", () => {
+test("default-integration-branch prints develop when no config", () => {
   const d = repo();
   const out = runGate(d, ["default-integration-branch"]).trim();
-  assert.equal(out, "next");
+  assert.equal(out, "develop");
 });
 
-test("pre-push refuses non-next push into main", () => {
+test("default-integration-branch prints develop when config has develop: true", () => {
+  const d = repo();
+  writeDmConfig(d, { develop: true });
+  const out = runGate(d, ["default-integration-branch"]).trim();
+  assert.equal(out, "develop");
+});
+
+test("default-integration-branch prints main when config has develop: false", () => {
+  const d = repo({ develop: false });
+  writeDmConfig(d, { develop: false });
+  const out = runGate(d, ["default-integration-branch"]).trim();
+  assert.equal(out, "main");
+});
+
+test("pre-push refuses non-develop push into main", () => {
   const d = repo();
   execSync("git checkout -b feature/s01-x/t01-y", { cwd: d, stdio: "pipe" });
   writeFileSync(join(d, "code.js"), "1");
@@ -169,60 +190,84 @@ test("pre-push refuses non-next push into main", () => {
   assert.throws(() => runGate(d, ["pre-push"], { input }));
 });
 
-test("pre-push allows next into main", () => {
+test("pre-push allows develop into main", () => {
   const d = repo();
-  execSync("git checkout next", { cwd: d, stdio: "pipe" });
+  execSync("git checkout develop", { cwd: d, stdio: "pipe" });
   writeFileSync(join(d, "release.txt"), "1");
   execSync("git add release.txt && git commit -m release", { cwd: d, stdio: "pipe" });
   const sha = execSync("git rev-parse HEAD", { cwd: d, encoding: "utf8" }).trim();
   const zero = "0000000000000000000000000000000000000000";
-  const input = `refs/heads/next ${sha} refs/heads/main ${zero}\n`;
+  const input = `refs/heads/develop ${sha} refs/heads/main ${zero}\n`;
   assert.equal(runGate(d, ["pre-push"], { input }), "");
 });
 
-test("pre-push allows framing feature branch into next without review", () => {
+test("pre-push allows framing feature branch into develop without review", () => {
   const d = repo();
-  execSync("git checkout -b feature/s01-x next", { cwd: d, stdio: "pipe" });
+  execSync("git checkout -b feature/s01-x develop", { cwd: d, stdio: "pipe" });
   mkdirSync(join(d, "docs/research"), { recursive: true });
   writeFileSync(join(d, "docs/research/s01-x.md"), "research");
   execSync("git add docs && git commit -m research", { cwd: d, stdio: "pipe" });
   const sha = execSync("git rev-parse HEAD", { cwd: d, encoding: "utf8" }).trim();
   const zero = "0000000000000000000000000000000000000000";
-  const input = `refs/heads/feature/s01-x ${sha} refs/heads/next ${zero}\n`;
+  const input = `refs/heads/feature/s01-x ${sha} refs/heads/develop ${zero}\n`;
   assert.equal(runGate(d, ["pre-push"], { input }), "");
 });
 
-test("pre-push refuses ticket feature branch into next without Ship allowed", () => {
+test("pre-push refuses ticket feature branch into develop without Ship allowed", () => {
   const d = repo();
-  execSync("git checkout -b feature/s01-x/t01-y next", { cwd: d, stdio: "pipe" });
+  execSync("git checkout -b feature/s01-x/t01-y develop", { cwd: d, stdio: "pipe" });
   writeFileSync(join(d, "code.js"), "1");
   execSync("git add code.js && git commit -m feat", { cwd: d, stdio: "pipe" });
   const sha = execSync("git rev-parse HEAD", { cwd: d, encoding: "utf8" }).trim();
   const zero = "0000000000000000000000000000000000000000";
-  const input = `refs/heads/feature/s01-x/t01-y ${sha} refs/heads/next ${zero}\n`;
+  const input = `refs/heads/feature/s01-x/t01-y ${sha} refs/heads/develop ${zero}\n`;
   assert.throws(() => runGate(d, ["pre-push"], { input }));
 });
 
-test("pre-push allows ticket feature branch into next with Ship allowed", () => {
+test("pre-push allows ticket feature branch into develop with Ship allowed", () => {
   const d = repo();
   mkdirSync(join(d, "docs/reviews/s01-x"), { recursive: true });
   writeFileSync(
     join(d, "docs/reviews/s01-x/t01-y.md"),
     "Max severity: none\nShip allowed: yes\n",
   );
-  execSync("git checkout -b feature/s01-x/t01-y next", { cwd: d, stdio: "pipe" });
+  execSync("git checkout -b feature/s01-x/t01-y develop", { cwd: d, stdio: "pipe" });
   writeFileSync(join(d, "code.js"), "1");
   execSync("git add code.js docs && git commit -m feat", { cwd: d, stdio: "pipe" });
   const sha = execSync("git rev-parse HEAD", { cwd: d, encoding: "utf8" }).trim();
   const zero = "0000000000000000000000000000000000000000";
-  const input = `refs/heads/feature/s01-x/t01-y ${sha} refs/heads/next ${zero}\n`;
+  const input = `refs/heads/feature/s01-x/t01-y ${sha} refs/heads/develop ${zero}\n`;
   assert.equal(runGate(d, ["pre-push"], { input }), "");
 });
 
-test("AGENTS.md names next as integration and Quick Fix on next", () => {
+test("without develop, feature branch ships straight to main with the same Ship allowed gate", () => {
+  const d = repo({ develop: false });
+  writeDmConfig(d, { develop: false });
+  execSync("git checkout -b feature/s01-x/t01-y main", { cwd: d, stdio: "pipe" });
+  writeFileSync(join(d, "code.js"), "1");
+  execSync("git add code.js && git commit -m feat", { cwd: d, stdio: "pipe" });
+  const sha = execSync("git rev-parse HEAD", { cwd: d, encoding: "utf8" }).trim();
+  const zero = "0000000000000000000000000000000000000000";
+  const input = `refs/heads/feature/s01-x/t01-y ${sha} refs/heads/main ${zero}\n`;
+
+  assert.throws(() => runGate(d, ["pre-push"], { input }));
+
+  mkdirSync(join(d, "docs/reviews/s01-x"), { recursive: true });
+  writeFileSync(
+    join(d, "docs/reviews/s01-x/t01-y.md"),
+    "Max severity: none\nShip allowed: yes\n",
+  );
+  execSync("git add docs && git commit -m review", { cwd: d, stdio: "pipe" });
+  const sha2 = execSync("git rev-parse HEAD", { cwd: d, encoding: "utf8" }).trim();
+  const input2 = `refs/heads/feature/s01-x/t01-y ${sha2} refs/heads/main ${zero}\n`;
+  assert.equal(runGate(d, ["pre-push"], { input: input2 }), "");
+});
+
+test("AGENTS.md names develop as the optional integration branch and Quick Fix on it", () => {
   const t = readFileSync(AGENTS, "utf8");
-  assert.match(t, /\bnext\b[\s\S]*integration|integration[\s\S]*\bnext\b/i);
-  assert.match(t, /Quick Fix[\s\S]*\bnext\b/i);
+  assert.match(t, /\bdevelop\b[\s\S]*integration|integration[\s\S]*\bdevelop\b/i);
+  assert.match(t, /"develop"/);
+  assert.match(t, /Quick Fix[\s\S]*integration branch/i);
   assert.doesNotMatch(t, /Quick Fix work happens only[\s\S]*on branch\s*`dev`/);
   assert.match(t, /critical or major|critical\s*\*\*or\*\*\s*major/i);
 });
@@ -241,10 +286,12 @@ test("AGENTS.md lists init docs release, hybrid PRD, child ready, orchestrator m
   assert.match(t, /<< IP Mike/);
 });
 
-test("dm-gate.yml refuses non-next PRs into main and gates ticket/framing/release", () => {
+test("dm-gate.yml resolves the integration branch and gates ticket/framing/release", () => {
   const t = readFileSync(join(ROOT, "src/workflows/dm-gate.yml"), "utf8");
-  assert.match(t, /github.head_ref != 'next'/);
-  assert.match(t, /PRs into main must come from next/);
+  assert.match(t, /cfg\.develop === false/);
+  assert.match(t, /github.head_ref != 'develop'/);
+  assert.match(t, /PRs into main must come from develop/);
+  assert.match(t, /steps\.cfg\.outputs\.integ/);
   assert.match(t, /Ship allowed: yes/);
   assert.match(t, /docs\/product\//);
   assert.match(t, /docs-only/);
@@ -314,7 +361,7 @@ test("pre-commit blocks code on ticket branch when board status is backlog", () 
   const d = repo();
   const { statePath, bin } = withBoard(d, [childIssue("backlog", "opt1")]);
   writeValidatedPlan(d);
-  execSync("git checkout -b feature/s01-x/t01-y next", { cwd: d, stdio: "pipe" });
+  execSync("git checkout -b feature/s01-x/t01-y develop", { cwd: d, stdio: "pipe" });
   stageCode(d);
   assert.throws(() =>
     runGate(d, ["pre-commit"], {
@@ -327,7 +374,7 @@ test("pre-commit allows code on ticket branch when board status is ready", () =>
   const d = repo();
   const { statePath, bin } = withBoard(d, [childIssue("ready", "opt2")]);
   writeValidatedPlan(d);
-  execSync("git checkout -b feature/s01-x/t01-y next", { cwd: d, stdio: "pipe" });
+  execSync("git checkout -b feature/s01-x/t01-y develop", { cwd: d, stdio: "pipe" });
   stageCode(d);
   assert.equal(
     runGate(d, ["pre-commit"], {
@@ -340,7 +387,7 @@ test("pre-commit allows code on ticket branch when board status is ready", () =>
 test("pre-commit allows docs-only even when board status is backlog", () => {
   const d = repo();
   const { statePath, bin } = withBoard(d, [childIssue("backlog", "opt1")]);
-  execSync("git checkout -b feature/s01-x/t01-y next", { cwd: d, stdio: "pipe" });
+  execSync("git checkout -b feature/s01-x/t01-y develop", { cwd: d, stdio: "pipe" });
   mkdirSync(join(d, "docs/notes"), { recursive: true });
   writeFileSync(join(d, "docs/notes/x.md"), "note");
   execSync("git add docs", { cwd: d, stdio: "pipe" });
@@ -355,7 +402,7 @@ test("pre-commit allows docs-only even when board status is backlog", () => {
 test("pre-commit allows code without config (board not initialized) when plan validated", () => {
   const d = repo();
   writeValidatedPlan(d);
-  execSync("git checkout -b feature/s01-x/t01-y next", { cwd: d, stdio: "pipe" });
+  execSync("git checkout -b feature/s01-x/t01-y develop", { cwd: d, stdio: "pipe" });
   stageCode(d);
   assert.equal(runGate(d, ["pre-commit"]), "");
 });
@@ -363,7 +410,7 @@ test("pre-commit allows code without config (board not initialized) when plan va
 test("pre-commit refuses code on story framing branch", () => {
   const d = repo();
   writeValidatedPlan(d);
-  execSync("git checkout -b feature/s01-x next", { cwd: d, stdio: "pipe" });
+  execSync("git checkout -b feature/s01-x develop", { cwd: d, stdio: "pipe" });
   stageCode(d);
   assert.throws(() => runGate(d, ["pre-commit"]));
 });

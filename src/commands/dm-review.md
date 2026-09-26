@@ -34,7 +34,7 @@ Invoke the Agent tool:
 - subagent_type: reviewer
 - description: Anti-hallucination review of <story-id>/<ticket-id>
 - working directory: the absolute ticket worktree
-- prompt: Review ticket <ticket-id> of story <story-id>. Diff is `git diff next...feature/<story-id>/<ticket-id>` — judge only that diff against the ticket section in docs/plans/<story-id>.md, docs/research/<story-id>.md when present, AGENTS.md and ADRs. When design docs exist, check design-system conformity for UI tickets. Run the test suite yourself. Fill templates/review-checklist.md, classify issues, end with exact lines "Max severity: …" and "Ship allowed: yes|no". A single critical or major = Ship allowed: no.
+- prompt: Review ticket <ticket-id> of story <story-id>. Diff is `git diff <integration-branch>...feature/<story-id>/<ticket-id>` (resolve `<integration-branch>` with `.dm/lib/dm-gate.sh default-integration-branch`) — judge only that diff against the ticket section in docs/plans/<story-id>.md, docs/research/<story-id>.md when present, AGENTS.md and ADRs. When design docs exist, check design-system conformity for UI tickets. Run the test suite yourself. Fill templates/review-checklist.md, classify issues, end with exact lines "Max severity: …" and "Ship allowed: yes|no". A single critical or major = Ship allowed: no.
 
 ### Step 2 — Report
 Write the full report to `docs/reviews/<story-id>/<ticket-id>.md`. It MUST end with `Max severity: …` and `Ship allowed: yes` or `Ship allowed: no`.

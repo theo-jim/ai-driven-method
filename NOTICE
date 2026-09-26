@@ -14,6 +14,6 @@ Material changes in driven vs killer-saas:
 - install target for Grok in addition to Claude Code and Codex
 - GitHub Project board with ready-gate
 - product wiki publish on release
-- main / next git flow
+- main / develop git flow (develop optional per project)
 - quality bar that blocks ship on major findings
-- semver bump on next → main
+- semver bump on the integration branch → main

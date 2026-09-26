@@ -9,11 +9,12 @@ Commands: `/dm-*`.
 
 driven keeps the original pipeline (no direct coding, file gates, subagents)
 and adds: hybrid PRD (clone or greenfield), Grok install, GitHub board + wiki,
-`main`/`next` flow, a stricter quality bar, and semver on release.
+`main`/`develop` flow (`develop` optional per project), a stricter quality bar,
+and semver on release.
 
 See [NOTICE](NOTICE), [DOC.md](DOC.md), [CHANGELOG.md](CHANGELOG.md) and [RELEASING.md](RELEASING.md).
 
-A complete agentic pipeline for product delivery: frame a hybrid PRD (clone an existing SaaS or greenfield), cut shippable user stories and child tickets, enforce quality on a GitHub board + wiki + `main`/`next` flow, and release with semver.
+A complete agentic pipeline for product delivery: frame a hybrid PRD (clone an existing SaaS or greenfield), cut shippable user stories and child tickets, enforce quality on a GitHub board + wiki + `main`/`develop` flow, and release with semver.
 One method = a suite of commands. One principle = no direct coding.
 
 Small presentation or copy adjustments can use the explicit **Quick Fix**
@@ -24,7 +25,7 @@ cross-cutting, or uncertain, the normal pipeline remains mandatory. See
 
 ## Pipeline
 
-PRD → Init (board / wiki / `VERSION`) → User Stories → Stories Review → Architecture + Design System → then, per story: Research → Design → Plan → Docs → then, per ticket: Execute → Review → Ship → Release (`next` → `main`).
+PRD → Init (board / wiki / `VERSION`) → User Stories → Stories Review → Architecture + Design System → then, per story: Research → Design → Plan → Docs → then, per ticket: Execute → Review → Ship → Release (the integration branch → `main`).
 
 Full method documentation: [DOC.md](DOC.md)
 
@@ -38,7 +39,7 @@ mutating nothing. Then the normal framing resumes at `/dm-prd` (brownfield mode)
 
 `/dm-prd` → `/dm-init` → `/dm-stories` → `/dm-stories-review` → `/dm-architect` → `/dm-design-system`
 
-Hybrid PRD: clone an existing SaaS **or** greenfield. Then board, wiki, `main`/`next`.
+Hybrid PRD: clone an existing SaaS **or** greenfield. Then board, wiki, `main` (+ optional `develop`).
 
 ### Per story — docs on `feature/<story-id>`
 
@@ -46,7 +47,7 @@ Hybrid PRD: clone an existing SaaS **or** greenfield. Then board, wiki, `main`/`
 
 Story branches are docs only. `ready` is **child-only**.
 
-### Per ticket — code on `feature/<story-id>/<ticket-id>` into `next`
+### Per ticket — code on `feature/<story-id>/<ticket-id>` into the integration branch
 
 `/dm-execute <story> <ticket>` → `/dm-review <story> <ticket>` → `/dm-ship <story> <ticket>`
 
@@ -61,7 +62,7 @@ mechanical impact list decides whether it goes through `/dm-architect` first.
 
 ### Production
 
-`/dm-release` — parents in `test`, bump `VERSION`, squash-merge `next` → `main`, tag, wiki, board `shipped`.
+`/dm-release` — parents in `test`, bump `VERSION`, squash-merge the integration branch → `main` (skipped when there is no `develop`), tag, wiki, board `shipped`.
 
 ## Install
 
@@ -138,7 +139,7 @@ The method's guardrails don't have to depend on a specific tool's permissions. O
     ./install.sh --hooks        # (add to any target)
 
 - **pre-commit** — refuses **code** on `feature/<story>/<ticket>` without a validated plan (`docs/plans/<story>.md` → `validated: yes`) and, when `.dm/config.json` exists, without the child Issue in `ready` or `in progress`. Docs-only commits always pass. Story framing branches (`feature/<story>`) are docs-only.
-- **pre-push** — refuses non-`next` updates to `main`; refuses integrating a ticket branch into `next` without `Ship allowed: yes`.
+- **pre-push** — refuses updates to `main` that don't come from the integration branch; refuses integrating a ticket branch into the integration branch without `Ship allowed: yes`.
 
 Reversible: `git config --unset core.hooksPath`. On Claude the harness also enforces "no direct coding" via tool permissions; the hooks make the same guarantees hold on Codex and Grok — enforcement lives in the repo, not the tool.
 

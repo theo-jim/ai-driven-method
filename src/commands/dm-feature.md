@@ -99,8 +99,9 @@ overwriting it would report the whole breakdown as re-reviewed when it was not.
 Soft gate, like the framing review: surfaced by `/dm-status`, not a hard block.
 
 ## Step 7 — Commit
-Commit on the integration line — `next` once /dm-init has run, otherwise the
-current default branch — with the message `docs: feature <slug>`.
+Commit on the integration branch once /dm-init has run (resolve it with
+`.dm/lib/dm-gate.sh default-integration-branch`), otherwise the current default
+branch — with the message `docs: feature <slug>`.
 
 End with, depending on Step 2:
 - architecture touched → "Feature framed (<ids>). Next step: /dm-architect"

@@ -23,7 +23,7 @@ Proceed as follows:
 1. Break the need into stories: each one an end-to-end shippable slice, testable. Give each story an id: `s<number>-<short-slug>` (e.g. s01-submit-testimonial) — this id names every pipeline file and the story branch, so keep it short and stable.
 2. For each story, write verifiable acceptance criteria (each one must be able to become a test), the agentic notes useful for execution, and a complexity score (1-5, same scale as the PRD perimeter) — a 5 gets split now, not at planning.
 3. Order the stories by dependency: no story may assume work not yet done.
-4. Write the result to `docs/stories.md` and commit it on the integration line (`next` after init, else current default) — message `docs: stories`.
+4. Write the result to `docs/stories.md` and commit it on the integration branch after init (resolve with `.dm/lib/dm-gate.sh default-integration-branch`), else the current default branch — message `docs: stories`.
 5. **Board — parent US only.** For each story id, create one parent Issue (status `backlog`). Do **not** create child tickets here:
    ```bash
    bash .dm/lib/dm-board.sh issue-create-us <story-id> "<title>" <body-file>

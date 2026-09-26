@@ -4,8 +4,10 @@
 # the gates live in the repo, not in a tool's per-command permissions.
 #
 # Branches (app git flow):
-#   main  = production (only updated from next; GitHub branch protection is the real guarantee)
-#   next  = integration (feature PRs land here)
+#   main     = production (only updated from the integration branch; GitHub branch
+#              protection is the real guarantee)
+#   develop  = integration (optional — see .dm/config.json "develop"; feature PRs
+#              land here when present, otherwise feature/* targets main directly)
 #   feature/<story-id>              = story framing (docs only)
 #   feature/<story-id>/<ticket-id>  = ticket implementation
 #
@@ -13,15 +15,37 @@
 #   dm-gate plan-validated <id>              exit 0 if docs/plans/<story>.md has `validated: yes`
 #   dm-gate ship-allowed  <id>               exit 0 if the review has `Ship allowed: yes`
 #   dm-gate ready-ok [story/ticket]          exit 0 if board child is ready|in progress (or no config)
-#   dm-gate default-integration-branch       prints `next`
+#   dm-gate default-integration-branch       prints `develop` (or `main` when .dm/config.json has "develop": false)
 #   dm-gate pre-commit                       block code without validated plan + ready child;
 #                                            block app code on story framing branches (docs only)
-#   dm-gate pre-push                         refuse non-next into main; gate ticket merges into next
+#   dm-gate pre-push                         refuse non-integration pushes into main; gate ticket merges into the integration branch
 set -euo pipefail
 
 repo_root() { git rev-parse --show-toplevel 2>/dev/null || pwd; }
 
-integration_branch() { printf 'next'; }
+# Reads .dm/config.json's "develop" field (default true when missing or unreadable).
+# false → the project has no integration branch; "the integration branch" is main.
+integration_branch() {
+  local root cfg out
+  root="$(repo_root)"
+  cfg="$root/.dm/config.json"
+  if [ -f "$cfg" ] && command -v node >/dev/null 2>&1; then
+    out="$(node -e '
+      const fs = require("fs");
+      try {
+        const cfg = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+        process.stdout.write(cfg.develop === false ? "main" : "develop");
+      } catch (e) {
+        process.stdout.write("develop");
+      }
+    ' "$cfg" 2>/dev/null)"
+    if [ -n "$out" ]; then
+      printf '%s' "$out"
+      return 0
+    fi
+  fi
+  printf 'develop'
+}
 production_branch() { printf 'main'; }
 
 # Prefer app install path (.dm/lib); fall back to method-repo sibling of this hook.
@@ -139,7 +163,7 @@ ready_ok() {
 pre_commit() {
   local branch id ticket; branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
   id="$(story_id_from_branch "$branch")"
-  # Not on a feature branch → nothing to enforce here (e.g. Quick Fix on next).
+  # Not on a feature branch → nothing to enforce here (e.g. Quick Fix on the integration branch).
   [ -n "$id" ] || return 0
 
   local code_staged=0 path
@@ -176,8 +200,12 @@ pre_push() {
     [ -n "${local_ref:-}" ] || continue
     [ "$local_sha" != "$zero" ] || continue
 
-    # Production: only next may update main. Client-side hint — GitHub protection is authoritative.
-    if [ "$remote_ref" = "refs/heads/$prod" ]; then
+    # Production: when there is a distinct integration branch, only it may update
+    # main. When there isn't (integ == prod, e.g. no develop), skip this block so
+    # the integration checks below run for main itself instead of being short-
+    # circuited by the `continue`. Client-side hint — GitHub branch protection is
+    # authoritative either way.
+    if [ "$remote_ref" = "refs/heads/$prod" ] && [ "$integ" != "$prod" ]; then
       if [ "$local_ref" != "refs/heads/$integ" ]; then
         echo "dm-gate: refusing push to $prod from ${local_ref#refs/heads/} — only $integ may update production. (GitHub branch protection is the real guarantee for $prod.)" >&2
         rc=1
@@ -185,7 +213,7 @@ pre_push() {
       continue
     fi
 
-    # Integration: ticket branches need a passed review before landing on next.
+    # Integration: ticket branches need a passed review before landing on the integration branch.
     if [ "$remote_ref" = "refs/heads/$integ" ]; then
       local range id
       if printf '%s' "$remote_sha" | grep -qE '^0+$'; then
