@@ -607,3 +607,67 @@ test("commands route pull/merge requests through dm-vcs, never a raw gh pr / gla
   assert.match(init, /--platform github\|gitlab/);
   assert.match(init, /glab auth login/);
 });
+
+// Runs the job's script (the `- |` block) under sh with merge request variables.
+function runCiGate({ source, target, files, develop = true }) {
+  const yml = readFileSync(join(ROOT, "src/workflows/dm-gate.gitlab-ci.yml"), "utf8");
+  const block = yml.split("    - |\n")[1];
+  const script = block.split("\n").map((l) => l.replace(/^ {6}/, "")).join("\n");
+  const d = mkdtempSync(join(tmpdir(), "gitlab-ci-"));
+  gitRepo(d);
+  mkdirSync(join(d, ".dm"), { recursive: true });
+  writeFileSync(join(d, ".dm/config.json"), JSON.stringify({ develop }));
+  git(d, "add", ".dm");
+  git(d, "commit", "-m", "cfg");
+  const base = git(d, "rev-parse", "HEAD").trim();
+  for (const [f, body] of Object.entries(files)) {
+    mkdirSync(join(d, dirname(f)), { recursive: true });
+    writeFileSync(join(d, f), body);
+  }
+  git(d, "add", "-A");
+  git(d, "commit", "-m", "change");
+  writeFileSync(join(d, "gate.sh"), script);
+  return spawnSync("sh", ["gate.sh"], {
+    cwd: d,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      CI_MERGE_REQUEST_SOURCE_BRANCH_NAME: source,
+      CI_MERGE_REQUEST_TARGET_BRANCH_NAME: target,
+      CI_MERGE_REQUEST_DIFF_BASE_SHA: base,
+    },
+  });
+}
+
+test("GitLab CI gate: a docs-only framing merge request passes, odd doc names included", () => {
+  const res = runCiGate({
+    source: "feature/s01-x",
+    target: "develop",
+    files: { "docs/a b/x *.md": "x", "docs/plans/s01-x.md": "x" },
+  });
+  assert.equal(res.status, 0, res.stdout + res.stderr);
+});
+
+test("GitLab CI gate: a framing merge request with app files fails and names them", () => {
+  const res = runCiGate({
+    source: "feature/s01-x",
+    target: "develop",
+    files: { "docs/ok.md": "x", "app *.js": "x", "docs.js": "x" },
+  });
+  assert.notEqual(res.status, 0);
+  assert.match(res.stdout, /^app \*\.js$/m);
+  assert.match(res.stdout, /^docs\.js$/m);
+});
+
+test("GitLab CI gate: ticket needs Ship allowed: yes, main only from develop", () => {
+  const ticket = { source: "feature/s01-x/t01-y", target: "develop" };
+  assert.notEqual(runCiGate({ ...ticket, files: { "a.js": "x" } }).status, 0);
+  const shipped = runCiGate({
+    ...ticket,
+    files: { "a.js": "x", "docs/reviews/s01-x/t01-y.md": "Ship allowed: yes\n", "docs/product/s01-x.md": "x" },
+  });
+  assert.equal(shipped.status, 0, shipped.stdout + shipped.stderr);
+  const intoMain = runCiGate({ source: "feature/s01-x/t01-y", target: "main", files: { "a.js": "x" } });
+  assert.notEqual(intoMain.status, 0);
+  assert.match(intoMain.stdout, /must come from develop/);
+});

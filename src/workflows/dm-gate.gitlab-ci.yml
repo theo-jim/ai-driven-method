@@ -53,17 +53,14 @@ dm-gate:
                 ;;
               *)
                 echo "dm-gate: story framing merge request — docs-only (no app code)"
-                bad=0
-                for f in $(git diff --name-only "${CI_MERGE_REQUEST_DIFF_BASE_SHA}...HEAD"); do
-                  case "$f" in
-                    docs/*) ;;
-                    *)
-                      echo "dm-gate: framing merge request must be docs-only; found app file: $f"
-                      bad=1
-                      ;;
-                  esac
-                done
-                [ "$bad" -eq 0 ]
+                # git lists the non-docs files itself, NUL-delimited: no word splitting
+                # or globbing of file names (read -d is bash-only; this job may run in sh).
+                app_files="$(git diff -z --name-only "${CI_MERGE_REQUEST_DIFF_BASE_SHA}...HEAD" -- . ':(exclude)docs/' | tr '\0' '\n')"
+                if [ -n "$app_files" ]; then
+                  echo "dm-gate: framing merge request must be docs-only; found app files:"
+                  printf '%s\n' "$app_files"
+                  exit 1
+                fi
                 ;;
             esac
           fi
