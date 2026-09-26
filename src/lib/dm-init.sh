@@ -2,8 +2,14 @@
 # dm-init — bootstrap app repo: remote, develop/main rulesets, Project V2, wiki, VERSION.
 # Usage: dm-init.sh run [--repo NAME] [--owner LOGIN] [--public|--private] [--yes]
 #        [--no-remote] [--no-develop] [--title PROJECT_TITLE]
+#        [--platform github|gitlab] [--host GITLAB_HOST]
 #        dm-init.sh assert-status-ids '<json-object>'   # fail-closed helper (tests)
+# GitLab: dm-init-gitlab.sh overrides the platform functions below.
 set -euo pipefail
+
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
+# shellcheck source=dm-vcs.sh
+source "$SCRIPT_DIR/dm-vcs.sh"
 
 YES=0
 VISIBILITY=private
@@ -12,6 +18,8 @@ OWNER=""
 CREATE_REMOTE=1
 USE_DEVELOP=1
 PROJECT_TITLE="driven"
+PLATFORM=""
+HOST=""
 
 die() { echo "dm-init: $*" >&2; exit 1; }
 
@@ -72,6 +80,15 @@ parse_run_args() {
       --no-develop) USE_DEVELOP=0; shift ;;
       --title)
         PROJECT_TITLE="${2:-}"; shift 2
+        ;;
+      --platform)
+        PLATFORM="${2:-}"
+        case "$PLATFORM" in github|gitlab) ;; *) die "--platform needs github or gitlab" ;; esac
+        shift 2
+        ;;
+      --host)
+        HOST="${2:-}"; [ -n "$HOST" ] || die "--host needs a hostname"
+        shift 2
         ;;
       *) die "unknown flag: $1" ;;
     esac
@@ -144,6 +161,28 @@ copy_ci_workflow() {
   fi
   mkdir -p .github/workflows
   cp "$src" .github/workflows/dm-gate.yml
+}
+
+# --platform, else an existing .dm/config.json (no field = github), else origin's host.
+resolve_platform() {
+  local url
+  if [ -z "$PLATFORM" ] && [ -f .dm/config.json ]; then
+    PLATFORM="$(dm_vcs_config_field platform)"
+    PLATFORM="${PLATFORM:-github}"
+  fi
+  if [ -z "$PLATFORM" ] && url="$(git remote get-url origin 2>/dev/null)"; then
+    PLATFORM="$(dm_vcs_detect "$url")" \
+      || die "cannot tell GitHub from GitLab for origin $url — pass --platform github|gitlab"
+  fi
+  PLATFORM="${PLATFORM:-github}"
+  if [ "$PLATFORM" = gitlab ]; then
+    # shellcheck source=dm-init-gitlab.sh
+    source "$SCRIPT_DIR/dm-init-gitlab.sh"
+  fi
+}
+
+require_cli() {
+  command -v gh >/dev/null || die "gh CLI required"
 }
 
 resolve_owner_repo() {
@@ -395,8 +434,9 @@ push_branches() {
 }
 
 cmd_run() {
-  command -v gh >/dev/null || die "gh CLI required"
   command -v node >/dev/null || die "node required"
+  resolve_platform
+  require_cli
   ensure_git
   resolve_owner_repo
   write_version_and_changelog
@@ -411,7 +451,7 @@ cmd_run() {
   fi
   create_project_and_config
   push_branches
-  echo "dm-init: done — ${OWNER}/${REPO_NAME} (VERSION=$(tr -d '[:space:]' <VERSION))"
+  echo "dm-init: done — ${PLATFORM} ${OWNER}/${REPO_NAME} (VERSION=$(tr -d '[:space:]' <VERSION))"
 }
 
 main() {
@@ -427,7 +467,7 @@ main() {
       assert_status_option_ids "${1:-}"
       ;;
     *)
-      die "usage: dm-init.sh run [--repo NAME] [--owner LOGIN] [--public|--private] [--yes] [--no-develop] | assert-status-ids '<json>'"
+      die "usage: dm-init.sh run [--repo NAME] [--owner LOGIN] [--public|--private] [--yes] [--no-develop] [--platform github|gitlab] [--host HOST] | assert-status-ids '<json>'"
       ;;
   esac
 }

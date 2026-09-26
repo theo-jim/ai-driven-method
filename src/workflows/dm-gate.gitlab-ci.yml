@@ -1,0 +1,90 @@
+# Copied into the app repo by /dm-init (platform gitlab) → .gitlab/ci/dm-gate.yml,
+# included from .gitlab-ci.yml. GitLab twin of dm-gate.yml (GitHub Actions).
+# Branch names reach the script only as CI variables (environment), never as
+# text substituted into it.
+dm-gate:
+  image: node:20
+  stage: test
+  variables:
+    GIT_DEPTH: "0"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && ($CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "develop" || $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main")
+  script:
+    - |
+      set -eu
+      base="$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+      head="$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME"
+      integ="$(node -e '
+        const fs = require("fs");
+        try {
+          const cfg = JSON.parse(fs.readFileSync(".dm/config.json", "utf8"));
+          process.stdout.write(cfg.develop === false ? "main" : "develop");
+        } catch (e) {
+          process.stdout.write("develop");
+        }
+      ')"
+      echo "dm-gate: $head → $base (integration branch: $integ)"
+
+      if [ "$base" = main ] && [ "$integ" = develop ] && [ "$head" != develop ]; then
+        echo "dm-gate: merge requests into main must come from develop (got head '$head')"
+        exit 1
+      fi
+
+      case "$head" in
+        feature/*)
+          if [ "$base" = "$integ" ]; then
+            rest="${head#feature/}"
+            case "$rest" in
+              */*)
+                review="docs/reviews/${rest}.md"
+                if [ ! -f "$review" ]; then
+                  echo "dm-gate: missing $review"
+                  exit 1
+                fi
+                grep -q '^Ship allowed: yes' "$review"
+                story_id="${rest%%/*}"
+                product="docs/product/${story_id}.md"
+                if [ -f "$product" ]; then
+                  echo "dm-gate: product doc present ($product)"
+                else
+                  echo "dm-gate: missing $product — ticket merge requests require the story product doc"
+                  exit 1
+                fi
+                ;;
+              *)
+                echo "dm-gate: story framing merge request — docs-only (no app code)"
+                bad=0
+                for f in $(git diff --name-only "${CI_MERGE_REQUEST_DIFF_BASE_SHA}...HEAD"); do
+                  case "$f" in
+                    docs/*) ;;
+                    *)
+                      echo "dm-gate: framing merge request must be docs-only; found app file: $f"
+                      bad=1
+                      ;;
+                  esac
+                done
+                [ "$bad" -eq 0 ]
+                ;;
+            esac
+          fi
+          ;;
+      esac
+
+      if [ "$base" = main ] && [ "$integ" = develop ] && [ "$head" = develop ]; then
+        git fetch origin "$base" --depth=1
+        base_ver="$(git show "origin/${base}:VERSION" 2>/dev/null | tr -d '[:space:]' || true)"
+        head_ver="$(tr -d '[:space:]' < VERSION 2>/dev/null || true)"
+        if [ -z "$head_ver" ]; then
+          echo "dm-gate: VERSION missing on develop"
+          exit 1
+        fi
+        if [ "$head_ver" = "$base_ver" ]; then
+          echo "dm-gate: VERSION unchanged vs main ($head_ver) — bump before release"
+          exit 1
+        fi
+        if [ -f CHANGELOG.md ] && ! grep -Fq "$head_ver" CHANGELOG.md; then
+          echo "dm-gate: CHANGELOG.md exists but does not mention $head_ver"
+          exit 1
+        fi
+        echo "dm-gate: VERSION $base_ver → $head_ver"
+      fi
