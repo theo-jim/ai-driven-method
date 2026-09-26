@@ -72,7 +72,7 @@ Sections, in this order:
 Write nothing you have not validated with the user.
 
 ## Commit
-`next` does not exist yet at this stage. Commit on the default branch, docs-only, so the
+The integration branch does not exist yet at this stage. Commit on the default branch, docs-only, so the
 `pre-commit` hook passes without a validated plan:
 
 ```bash

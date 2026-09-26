@@ -219,6 +219,7 @@ sync_lib() {
   local payload="${1:-$SRC}"
   mkdir -p ./.dm/lib
   cp -R "$payload/lib/." ./.dm/lib/
+  cp "$payload/hooks/dm-gate.sh" ./.dm/lib/dm-gate.sh
   chmod +x ./.dm/lib/*.sh 2>/dev/null || true
   if [ -d "$payload/workflows" ]; then
     mkdir -p ./.dm/workflows

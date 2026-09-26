@@ -11,7 +11,7 @@ Règle unique : interdit de coder en direct. Chaque feature passe par le pipelin
 
 ## Une fois par projet
 1. /dm-prd <cible>       — cadre le produit : clone ou greenfield, périmètre, QUOI + POURQUOI
-2. /dm-init              — repo GitHub, branches `main`/`next`, Project, wiki, VERSION, CI
+2. /dm-init              — repo GitHub, branches `main` (+ `develop` optionnelle), Project, wiki, VERSION, CI
 3. /dm-stories           — découpe en **user stories** (Issues parent, colonne `backlog`)
 4. /dm-stories-review    — relit le découpage vs le PRD (contexte vierge)
 5. /dm-architect         — stack, conventions, rules
@@ -27,10 +27,10 @@ Règle unique : interdit de coder en direct. Chaque feature passe par le pipelin
 La colonne **`ready` n'existe que sur les tickets enfants**, jamais sur l'US parent.
 11. /dm-execute <story> <ticket>  — `require-ready` puis code en TDD (subagent)
 12. /dm-review <story> <ticket>   — review + gate `Ship allowed`
-13. /dm-ship <story> <ticket>     — PR vers **`next`** ; après merge → enfant `test` + `parent-sync`
+13. /dm-ship <story> <ticket>     — PR vers **la branche d'intégration** (`develop`, sinon `main`) ; après merge → enfant `test` + `parent-sync`
 
 ## Release (production)
-14. /dm-release           — US parent en `test` ; bump VERSION ; PR `next` → `main` ; wiki ; `shipped`
+14. /dm-release           — US parent en `test` ; bump VERSION ; PR intégration → `main` (sautée si pas de `develop`) ; wiki ; `shipped`
 
 ## Après la v1 (produit livré)
 15. /dm-feature <slug>   — cadre une feature, amende le PRD (section `## Amendements`), ajoute les stories au backlog. Puis pipeline normal : `/dm-architect` si la feature touche l'architecture, sinon `/dm-research <story>`.

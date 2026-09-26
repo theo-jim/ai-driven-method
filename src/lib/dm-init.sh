@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# dm-init — bootstrap app repo: remote, next/main rulesets, Project V2, wiki, VERSION.
+# dm-init — bootstrap app repo: remote, develop/main rulesets, Project V2, wiki, VERSION.
 # Usage: dm-init.sh run [--repo NAME] [--owner LOGIN] [--public|--private] [--yes]
-#        [--no-remote] [--title PROJECT_TITLE]
+#        [--no-remote] [--no-develop] [--title PROJECT_TITLE]
 #        dm-init.sh assert-status-ids '<json-object>'   # fail-closed helper (tests)
 set -euo pipefail
 
@@ -10,6 +10,7 @@ VISIBILITY=private
 REPO_NAME=""
 OWNER=""
 CREATE_REMOTE=1
+USE_DEVELOP=1
 PROJECT_TITLE="driven"
 
 die() { echo "dm-init: $*" >&2; exit 1; }
@@ -68,6 +69,7 @@ parse_run_args() {
         shift 2
         ;;
       --no-remote) CREATE_REMOTE=0; shift ;;
+      --no-develop) USE_DEVELOP=0; shift ;;
       --title)
         PROJECT_TITLE="${2:-}"; shift 2
         ;;
@@ -102,11 +104,12 @@ ensure_git() {
   fi
 }
 
-ensure_next_branch() {
-  if git show-ref --verify --quiet refs/heads/next; then
+ensure_develop_branch() {
+  [ "$USE_DEVELOP" -eq 1 ] || return 0
+  if git show-ref --verify --quiet refs/heads/develop; then
     return 0
   fi
-  git branch next main 2>/dev/null || git branch next
+  git branch develop main 2>/dev/null || git branch develop
 }
 
 write_version_and_changelog() {
@@ -216,13 +219,14 @@ protect_branch() {
 }
 JSON
   then
-    warn "branch protection for '${branch}' FAILED — ${branch} is NOT protected. Set it in GitHub so $( [ "$branch" = main ] && echo "only next can merge into main" || echo "feature/* PRs are required into next" ). Do not assume protection is on."
+    local integ; integ="$([ "$USE_DEVELOP" -eq 1 ] && printf 'develop' || printf 'feature/*')"
+    warn "branch protection for '${branch}' FAILED — ${branch} is NOT protected. Set it in GitHub so $( [ "$branch" = main ] && echo "only $integ can merge into main" || echo "feature/* PRs are required into $branch" ). Do not assume protection is on."
     return 0
   fi
   return 0
 }
 
-# Repository rulesets: main ← only next; next ← feature/*
+# Repository rulesets: main ← only develop (or feature/* directly when --no-develop); develop ← feature/*
 apply_rulesets() {
   if [ "$CREATE_REMOTE" -eq 0 ]; then
     echo "dm-init: --no-remote — skip branch protection and rulesets (no GitHub repo)" >&2
@@ -240,13 +244,19 @@ apply_rulesets() {
   fi
 
   protect_branch main
-  protect_branch next
 
-  if ! create_or_update_ruleset "driven-main" "main" "next"; then
-    warn "ruleset driven-main not applied — main is NOT restricted to next"
-  fi
-  if ! create_or_update_ruleset "driven-next" "next" "feature/*"; then
-    warn "ruleset driven-next not applied — next is NOT restricted to feature/*"
+  if [ "$USE_DEVELOP" -eq 1 ]; then
+    protect_branch develop
+    if ! create_or_update_ruleset "driven-main" "main" "develop"; then
+      warn "ruleset driven-main not applied — main is NOT restricted to develop"
+    fi
+    if ! create_or_update_ruleset "driven-develop" "develop" "feature/*"; then
+      warn "ruleset driven-develop not applied — develop is NOT restricted to feature/*"
+    fi
+  else
+    if ! create_or_update_ruleset "driven-main" "main" "feature/*"; then
+      warn "ruleset driven-main not applied — main is NOT restricted to feature/*"
+    fi
   fi
   unset repo_id
 }
@@ -366,11 +376,12 @@ create_project_and_config() {
       project_id: process.argv[3],
       project_number: Number(process.argv[4]),
       status_field_id: process.argv[5],
-      status_option_ids: JSON.parse(process.argv[6])
+      status_option_ids: JSON.parse(process.argv[6]),
+      develop: process.argv[7] === "1"
     };
     fs.mkdirSync(".dm", { recursive: true });
     fs.writeFileSync(".dm/config.json", JSON.stringify(cfg, null, 2) + "\n");
-  ' "$OWNER" "$REPO_NAME" "$project_id" "$project_number" "$field_id" "$status_json"
+  ' "$OWNER" "$REPO_NAME" "$project_id" "$project_number" "$field_id" "$status_json" "$USE_DEVELOP"
 }
 
 push_branches() {
@@ -378,7 +389,9 @@ push_branches() {
     return 0
   fi
   git push -u origin main 2>/dev/null || git push -u origin HEAD:main || true
-  git push -u origin next 2>/dev/null || true
+  if [ "$USE_DEVELOP" -eq 1 ]; then
+    git push -u origin develop 2>/dev/null || true
+  fi
 }
 
 cmd_run() {
@@ -389,7 +402,7 @@ cmd_run() {
   write_version_and_changelog
   copy_ci_workflow
   create_remote_if_needed
-  ensure_next_branch
+  ensure_develop_branch
   if [ "$CREATE_REMOTE" -eq 1 ]; then
     enable_wiki
     apply_rulesets
@@ -414,7 +427,7 @@ main() {
       assert_status_option_ids "${1:-}"
       ;;
     *)
-      die "usage: dm-init.sh run [--repo NAME] [--owner LOGIN] [--public|--private] [--yes] | assert-status-ids '<json>'"
+      die "usage: dm-init.sh run [--repo NAME] [--owner LOGIN] [--public|--private] [--yes] [--no-develop] | assert-status-ids '<json>'"
       ;;
   esac
 }

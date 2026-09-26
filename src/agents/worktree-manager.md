@@ -1,6 +1,6 @@
 ---
 name: worktree-manager
-description: Creates and verifies the dedicated worktree for one driven story framing branch or one ticket branch, always from next. Invoked before Research (story) or Execute (ticket).
+description: Creates and verifies the dedicated worktree for one driven story framing branch or one ticket branch, always from the integration branch. Invoked before Research (story) or Execute (ticket).
 tools: Read, Bash, Glob
 model: inherit
 ---
@@ -11,20 +11,25 @@ Input: a resolved work id and the repository base directory.
 - Story framing: `<story-id>` → branch `feature/<story-id>`, path `.worktrees/<story-id>` (docs only).
 - Ticket implementation: `<story-id>/<ticket-id>` → branch `feature/<story-id>/<ticket-id>`, path `.worktrees/<story-id>/<ticket-id>`.
 
-Base branch is always **`next`** (integration). Never create feature branches from `main`. Resolve `next` via `dm-gate.sh default-integration-branch` when unsure.
+Base branch is always **the integration branch** (`develop` if the project has one,
+otherwise `main`). Never create feature branches from `main` when a `develop` exists.
+Resolve it with `.dm/lib/dm-gate.sh default-integration-branch` — call it once, keep
+the result, never hardcode `develop` or `main`.
 
 Procedure, fail-closed:
 
-1. Resolve the integration branch as `next` without switching the base directory.
-   Resolve the required branch and path from the work id above.
+1. Resolve the integration branch via `.dm/lib/dm-gate.sh default-integration-branch`
+   without switching the base directory. Resolve the required branch and path from
+   the work id above.
 2. Inspect `git worktree list --porcelain`, the required path and the required
    branch. If the path exists on another branch, the branch is checked out in
    another path, HEAD is detached, or either target contains uncommitted work,
    stop and report the exact conflict. Never delete, move, stash or repair it
    by guessing.
-3. If absent, create the exact branch from **`next`** in the exact path, e.g.:
-   - Story: `git worktree add -b feature/<story-id> .worktrees/<story-id> next`
-   - Ticket: `git worktree add -b feature/<story-id>/<ticket-id> .worktrees/<story-id>/<ticket-id> next`
+3. If absent, create the exact branch from the resolved integration branch in the
+   exact path, e.g. (with `$INTEG` holding the resolved name):
+   - Story: `git worktree add -b feature/<story-id> .worktrees/<story-id> "$INTEG"`
+   - Ticket: `git worktree add -b feature/<story-id>/<ticket-id> .worktrees/<story-id>/<ticket-id> "$INTEG"`
    Never create or checkout it in the repository base, and never invent a
    suffix such as `-isolated`.
 4. Copy the repository base's local environment files needed to run and test
@@ -41,9 +46,10 @@ Procedure, fail-closed:
    sufficient; report any network or credential blocker instead of changing
    the lockfile. (Story framing worktrees that stay docs-only may skip install
    when no test command will run there.)
-6. Verify and return: absolute path, exact branch, base `next`, HEAD, clean git
-   status, environment filenames copied (names only, never values), whether the
-   test environment is available, and dependency command/result.
+6. Verify and return: absolute path, exact branch, the resolved integration branch
+   used as base, HEAD, clean git status, environment filenames copied (names only,
+   never values), whether the test environment is available, and dependency
+   command/result.
 
 Never run implementation, Research, Design, Plan, Review or Ship. Workspace
 creation is your only responsibility.

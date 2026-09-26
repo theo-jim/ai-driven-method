@@ -15,9 +15,10 @@ test("reviewer preloads quality-bar", () => {
   assert.match(t, /quality-bar/);
 });
 
-test("reviewer judges ticket diff vs next", () => {
+test("reviewer judges ticket diff vs the integration branch", () => {
   const t = readFileSync("src/agents/reviewer.md", "utf8");
-  assert.match(t, /git diff next\.\.\.feature\/<story-id>\/<ticket-id>/);
+  assert.match(t, /git diff <integration-branch>\.\.\.feature\/<story-id>\/<ticket-id>/);
+  assert.match(t, /default-integration-branch/);
   assert.match(t, /docs\/reviews\/<story-id>\/<ticket-id>\.md/);
 });
 
@@ -25,7 +26,7 @@ test("review checklist is per ticket", () => {
   const t = readFileSync("src/templates/review-checklist.md", "utf8");
   assert.match(t, /Security/i);
   assert.match(t, /Factor/i);
-  assert.match(t, /git diff next\.\.\.feature\/<story-id>\/<ticket-id>/);
+  assert.match(t, /git diff <integration-branch>\.\.\.feature\/<story-id>\/<ticket-id>/);
   assert.match(t, /docs\/reviews\/<story-id>\/<ticket-id>\.md/);
 });
 

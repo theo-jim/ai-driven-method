@@ -28,7 +28,7 @@ Resolve the first argument to `<story-id>` against docs/stories.md. If a second 
 3. docs/architecture.md exists? Missing → STOP: run /dm-architect.
 4. docs/reviews/stories.md says `Stories ready: yes`? Warn if missing/negative (don't hard-stop).
 
-Invoke `worktree-manager` for `.worktrees/<story-id>` on `feature/<story-id>` from `next`. Every framing phase uses that worktree.
+Invoke `worktree-manager` for `.worktrees/<story-id>` on `feature/<story-id>` from the integration branch. Every framing phase uses that worktree.
 
 ### Phase 1 — Research
 Follow the `/dm-research` contract if docs/research/<id>.md is missing. **No `require-ready`.**
@@ -67,6 +67,6 @@ Same as `/dm-execute`: `status-set … "in progress"`, delegate `implementer` fo
 Same as `/dm-review` for `<story-id> <ticket-id>`. Gate: `Ship allowed: no` → fix loop via execute (max 2).
 
 ### Phase 3 — Ship checkpoint
-AskUserQuestion: "Ship now?" — Ship / Not now. Only explicit Ship runs `/dm-ship` (PR `--base next`; after MERGED: `status-set … test` + `parent-sync`).
+AskUserQuestion: "Ship now?" — Ship / Not now. Only explicit Ship runs `/dm-ship` (PR into the integration branch; after MERGED: `status-set … test` + `parent-sync`).
 
 End with the ship outcome for this ticket (PR URL or merged + board test).

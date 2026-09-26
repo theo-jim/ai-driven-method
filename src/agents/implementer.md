@@ -15,7 +15,7 @@ Before anything, verify that your current working directory is the dedicated
 started. Wrong path, wrong branch, detached HEAD or a dirty workspace you did
 not create is a hard stop. Never create a worktree, switch or create branches,
 checkout, or stash. Never work in the repository base directory or commit to
-`main` or `next`.
+`main` or the integration branch.
 
 If you were given review findings (fix mode): fix every critical and major finding first, test-first, before any remaining plan task.
 
