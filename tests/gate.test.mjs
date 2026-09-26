@@ -414,3 +414,243 @@ test("pre-commit refuses code on story framing branch", () => {
   stageCode(d);
   assert.throws(() => runGate(d, ["pre-commit"]));
 });
+
+// --- fix/<id> branch namespace (issue #3) ---
+
+test("plan-validated for fix/<id> looks for docs/plans/fix-<id>.md", () => {
+  const d = repo();
+  mkdirSync(join(d, "docs/plans"), { recursive: true });
+  writeFileSync(
+    join(d, "docs/plans/fix-null-cart-crash.md"),
+    "---\nvalidated: yes\n---\n",
+  );
+  assert.equal(runGate(d, ["plan-validated", "fix/null-cart-crash"]), "");
+});
+
+test("plan-validated for fix/<id> fails without the hyphenated plan file", () => {
+  const d = repo();
+  assert.throws(() => runGate(d, ["plan-validated", "fix/null-cart-crash"]));
+});
+
+test("ship-allowed for fix/<id> looks for docs/reviews/fix/<id>.md", () => {
+  const d = repo();
+  mkdirSync(join(d, "docs/reviews/fix"), { recursive: true });
+  writeFileSync(
+    join(d, "docs/reviews/fix/null-cart-crash.md"),
+    "Max severity: none\nShip allowed: yes\n",
+  );
+  assert.equal(runGate(d, ["ship-allowed", "fix/null-cart-crash"]), "");
+});
+
+test("ready-ok treats fix/<id> as a child requiring ready or in progress", () => {
+  const d = repo();
+  const { statePath, bin } = withBoard(d, [
+    {
+      title: "[fix/null-cart-crash] Null cart crash (S, 1d)",
+      number: 2,
+      projectItems: [{ id: "PVTI_2", status: { optionId: "opt1", name: "backlog" } }],
+    },
+  ]);
+  assert.throws(() =>
+    runGate(d, ["ready-ok", "fix/null-cart-crash"], {
+      env: { PATH: `${bin}:${process.env.PATH}`, DM_GH_STUB_STATE: statePath },
+    }),
+  );
+});
+
+test("ready-ok passes for fix/<id> when board status is ready", () => {
+  const d = repo();
+  const { statePath, bin } = withBoard(d, [
+    {
+      title: "[fix/null-cart-crash] Null cart crash (S, 1d)",
+      number: 2,
+      projectItems: [{ id: "PVTI_2", status: { optionId: "opt2", name: "ready" } }],
+    },
+  ]);
+  assert.equal(
+    runGate(d, ["ready-ok", "fix/null-cart-crash"], {
+      env: { PATH: `${bin}:${process.env.PATH}`, DM_GH_STUB_STATE: statePath },
+    }),
+    "",
+  );
+});
+
+test("pre-commit blocks code on fix/<id> branch without a validated plan", () => {
+  const d = repo();
+  execSync("git checkout -b fix/null-cart-crash develop", { cwd: d, stdio: "pipe" });
+  stageCode(d);
+  assert.throws(() => runGate(d, ["pre-commit"]));
+});
+
+test("pre-commit blocks code on fix/<id> branch when board status is backlog", () => {
+  const d = repo();
+  const { statePath, bin } = withBoard(d, [
+    {
+      title: "[fix/null-cart-crash] Null cart crash (S, 1d)",
+      number: 2,
+      projectItems: [{ id: "PVTI_2", status: { optionId: "opt1", name: "backlog" } }],
+    },
+  ]);
+  mkdirSync(join(d, "docs/plans"), { recursive: true });
+  writeFileSync(
+    join(d, "docs/plans/fix-null-cart-crash.md"),
+    "---\nvalidated: yes\n---\n",
+  );
+  execSync("git checkout -b fix/null-cart-crash develop", { cwd: d, stdio: "pipe" });
+  stageCode(d);
+  assert.throws(() =>
+    runGate(d, ["pre-commit"], {
+      env: { PATH: `${bin}:${process.env.PATH}`, DM_GH_STUB_STATE: statePath },
+    }),
+  );
+});
+
+test("pre-commit allows code on fix/<id> branch when plan validated and board status is ready", () => {
+  const d = repo();
+  const { statePath, bin } = withBoard(d, [
+    {
+      title: "[fix/null-cart-crash] Null cart crash (S, 1d)",
+      number: 2,
+      projectItems: [{ id: "PVTI_2", status: { optionId: "opt2", name: "ready" } }],
+    },
+  ]);
+  mkdirSync(join(d, "docs/plans"), { recursive: true });
+  writeFileSync(
+    join(d, "docs/plans/fix-null-cart-crash.md"),
+    "---\nvalidated: yes\n---\n",
+  );
+  execSync("git checkout -b fix/null-cart-crash develop", { cwd: d, stdio: "pipe" });
+  stageCode(d);
+  assert.equal(
+    runGate(d, ["pre-commit"], {
+      env: { PATH: `${bin}:${process.env.PATH}`, DM_GH_STUB_STATE: statePath },
+    }),
+    "",
+  );
+});
+
+test("pre-push refuses direct push of fix/<id> branch into develop without Ship allowed", () => {
+  const d = repo();
+  execSync("git checkout -b fix/null-cart-crash develop", { cwd: d, stdio: "pipe" });
+  writeFileSync(join(d, "code.js"), "1");
+  execSync("git add code.js && git commit -m feat", { cwd: d, stdio: "pipe" });
+  const sha = execSync("git rev-parse HEAD", { cwd: d, encoding: "utf8" }).trim();
+  const zero = "0000000000000000000000000000000000000000";
+  const input = `refs/heads/fix/null-cart-crash ${sha} refs/heads/develop ${zero}\n`;
+  assert.throws(() => runGate(d, ["pre-push"], { input }));
+});
+
+test("pre-push allows direct push of fix/<id> branch into develop with Ship allowed", () => {
+  const d = repo();
+  mkdirSync(join(d, "docs/reviews/fix"), { recursive: true });
+  writeFileSync(
+    join(d, "docs/reviews/fix/null-cart-crash.md"),
+    "Max severity: none\nShip allowed: yes\n",
+  );
+  execSync("git checkout -b fix/null-cart-crash develop", { cwd: d, stdio: "pipe" });
+  writeFileSync(join(d, "code.js"), "1");
+  execSync("git add code.js docs && git commit -m feat", { cwd: d, stdio: "pipe" });
+  const sha = execSync("git rev-parse HEAD", { cwd: d, encoding: "utf8" }).trim();
+  const zero = "0000000000000000000000000000000000000000";
+  const input = `refs/heads/fix/null-cart-crash ${sha} refs/heads/develop ${zero}\n`;
+  assert.equal(runGate(d, ["pre-push"], { input }), "");
+});
+
+test("pre-push refuses a merge of fix/<id> landing on develop without a passed review", () => {
+  const d = repo();
+  execSync("git checkout -b fix/null-cart-crash develop", { cwd: d, stdio: "pipe" });
+  writeFileSync(join(d, "code.js"), "1");
+  execSync("git add code.js && git commit -m feat", { cwd: d, stdio: "pipe" });
+  execSync("git checkout develop", { cwd: d, stdio: "pipe" });
+  execSync(
+    "git merge --no-ff fix/null-cart-crash -m \"Merge branch 'fix/null-cart-crash' into develop\"",
+    { cwd: d, stdio: "pipe" },
+  );
+  const sha = execSync("git rev-parse HEAD", { cwd: d, encoding: "utf8" }).trim();
+  const zero = "0000000000000000000000000000000000000000";
+  const input = `refs/heads/develop ${sha} refs/heads/develop ${zero}\n`;
+  assert.throws(() => runGate(d, ["pre-push"], { input }));
+});
+
+test("plan-validated rejects a malformed fix id with a nested slash instead of constructing a nested plan path", () => {
+  const d = repo();
+  assert.throws(() => runGate(d, ["plan-validated", "fix/a/b"]));
+});
+
+test("plan-validated rejects fix/a/b even when a coincidental nested docs/plans/fix-a/b.md exists and is validated", () => {
+  // Without shape validation, plan_id_from_work_id("fix/a/b") builds the nested
+  // path docs/plans/fix-a/b.md; if that path happens to exist and say
+  // `validated: yes`, the malformed id would be silently accepted instead of
+  // rejected outright — proving the id shape, not just file presence, must gate.
+  const d = repo();
+  mkdirSync(join(d, "docs/plans/fix-a"), { recursive: true });
+  writeFileSync(join(d, "docs/plans/fix-a/b.md"), "---\nvalidated: yes\n---\n");
+  assert.throws(() => runGate(d, ["plan-validated", "fix/a/b"]));
+});
+
+test("pre-commit blocks code on a malformed fix/a/b branch even with a coincidental nested plan file", () => {
+  const d = repo();
+  mkdirSync(join(d, "docs/plans/fix-a"), { recursive: true });
+  writeFileSync(join(d, "docs/plans/fix-a/b.md"), "---\nvalidated: yes\n---\n");
+  execSync("git checkout -b fix/a/b develop", { cwd: d, stdio: "pipe" });
+  stageCode(d);
+  assert.throws(() => runGate(d, ["pre-commit"]));
+});
+
+// --- feature/* merge-commit regression for the pre_push sed rewrite ---
+
+test("pre-push refuses a merge of feature/<story-id>/<ticket-id> landing on develop without a passed review", () => {
+  const d = repo();
+  execSync("git checkout -b feature/s01-x/t01-y develop", { cwd: d, stdio: "pipe" });
+  writeFileSync(join(d, "code.js"), "1");
+  execSync("git add code.js && git commit -m feat", { cwd: d, stdio: "pipe" });
+  execSync("git checkout develop", { cwd: d, stdio: "pipe" });
+  execSync(
+    "git merge --no-ff feature/s01-x/t01-y -m \"Merge branch 'feature/s01-x/t01-y' into develop\"",
+    { cwd: d, stdio: "pipe" },
+  );
+  const sha = execSync("git rev-parse HEAD", { cwd: d, encoding: "utf8" }).trim();
+  const zero = "0000000000000000000000000000000000000000";
+  const input = `refs/heads/develop ${sha} refs/heads/develop ${zero}\n`;
+  assert.throws(() => runGate(d, ["pre-push"], { input }));
+});
+
+test("pre-push allows a merge of feature/<story-id>/<ticket-id> landing on develop with a passed review", () => {
+  const d = repo();
+  execSync("git checkout -b feature/s01-x/t01-y develop", { cwd: d, stdio: "pipe" });
+  mkdirSync(join(d, "docs/reviews/s01-x"), { recursive: true });
+  writeFileSync(
+    join(d, "docs/reviews/s01-x/t01-y.md"),
+    "Max severity: none\nShip allowed: yes\n",
+  );
+  execSync("git add docs && git commit -m review", { cwd: d, stdio: "pipe" });
+  execSync("git checkout develop", { cwd: d, stdio: "pipe" });
+  execSync(
+    "git merge --no-ff feature/s01-x/t01-y -m \"Merge branch 'feature/s01-x/t01-y' into develop\"",
+    { cwd: d, stdio: "pipe" },
+  );
+  const sha = execSync("git rev-parse HEAD", { cwd: d, encoding: "utf8" }).trim();
+  const zero = "0000000000000000000000000000000000000000";
+  const input = `refs/heads/develop ${sha} refs/heads/develop ${zero}\n`;
+  assert.equal(runGate(d, ["pre-push"], { input }), "");
+});
+
+test("pre-push allows a merge of fix/<id> landing on develop with a passed review", () => {
+  const d = repo();
+  execSync("git checkout -b fix/null-cart-crash develop", { cwd: d, stdio: "pipe" });
+  mkdirSync(join(d, "docs/reviews/fix"), { recursive: true });
+  writeFileSync(
+    join(d, "docs/reviews/fix/null-cart-crash.md"),
+    "Max severity: none\nShip allowed: yes\n",
+  );
+  execSync("git add docs && git commit -m review", { cwd: d, stdio: "pipe" });
+  execSync("git checkout develop", { cwd: d, stdio: "pipe" });
+  execSync(
+    "git merge --no-ff fix/null-cart-crash -m \"Merge branch 'fix/null-cart-crash' into develop\"",
+    { cwd: d, stdio: "pipe" },
+  );
+  const sha = execSync("git rev-parse HEAD", { cwd: d, encoding: "utf8" }).trim();
+  const zero = "0000000000000000000000000000000000000000";
+  const input = `refs/heads/develop ${sha} refs/heads/develop ${zero}\n`;
+  assert.equal(runGate(d, ["pre-push"], { input }), "");
+});

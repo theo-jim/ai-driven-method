@@ -43,6 +43,12 @@ La colonne **`ready` n'existe que sur les tickets enfants**, jamais sur l'US par
 | Branche | `feature/<story>` (docs only) | `feature/<story>/<ticket>` (code) |
 | Création Issue | `/dm-stories` (`issue-create-us`) | `/dm-plan` Validate (`issue-create-ticket`) |
 
+## Fix ponctuel (hors story)
+`/dm-fix <description>` crée un ticket autonome sans story parente, avec la
+même rigueur qu'un ticket normal (worktree, TDD, sous-agents). Branche
+`fix/<id>`, puis `/dm-execute fix/<id>` → `/dm-review fix/<id>` →
+`/dm-ship fix/<id>`.
+
 ## Orchestrateur
 - `/dm-orchestrator <story>` — research → design → plan (checkpoint) → docs, puis liste les tickets en backlog
 - `/dm-orchestrator <story> <ticket>` — execute → review → ship (checkpoint)

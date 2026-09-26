@@ -1,5 +1,13 @@
 # Review — Ticket <story-id>/<ticket-id>
 
+> For a fix ticket (branch `fix/<id>`, no parent story), substitute throughout
+> this document: `<story-id>/<ticket-id>` → `fix/<id>`,
+> `feature/<story-id>/<ticket-id>` → `fix/<id>`,
+> `docs/reviews/<story-id>/<ticket-id>.md` → `docs/reviews/fix/<id>.md`. The
+> diff is `git diff <integration-branch>...fix/<id>`. There is no per-ticket
+> plan section for a fix — `docs/plans/fix-<id>.md` in its entirety is the
+> ticket. Same procedure otherwise.
+
 > Fresh-context review. Each issue classified: critical / major / minor.
 > Diff reviewed: `git diff <integration-branch>...feature/<story-id>/<ticket-id>` (resolve `<integration-branch>` with `.dm/lib/dm-gate.sh default-integration-branch`)
 > Report path: `docs/reviews/<story-id>/<ticket-id>.md`

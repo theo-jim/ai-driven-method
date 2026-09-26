@@ -57,6 +57,37 @@ on that branch; never switch branches automatically. Before editing, verify
 that no other agent owns the base directory. If another agent is working
 there, coordinate ownership or stop; never overlap edits.
 
+After committing, run `bash .dm/lib/dm-gate.sh quickfix-push`, rather than a
+bare `git push`. It first pushes the Quick Fix directly to the integration
+branch, preserving the normal Quick Fix path. Only if that push is refused,
+it creates and pushes a short-lived `quickfix/*` branch from the committed
+HEAD, opens a PR/MR into the integration branch, and follows the **Ship
+strategy** below: manual stops with the PR for the human to merge; auto
+squash-merges it. Cleanup of the fallback branch happens only after `gh pr
+view` proves the PR is `MERGED`, after which the local integration branch is
+reset to match the merged remote (a squash commit has no ancestry relation to
+the original local commit). This recovery branch is an exception solely for a
+refused push; Quick Fix work itself still has no feature branch or worktree.
+
+### Fix ticket mode
+
+A fix ticket is a standalone, parentless ticket that gets the **full**
+pipeline rigor — dedicated worktree, mandatory TDD via the `implementer`
+subagent, review via the `reviewer` subagent, ship into the integration
+branch — without any story above it. It runs the same execute → review → ship
+cycle as a child ticket, just without a story-level framing phase:
+
+`/dm-fix <description>` → `/dm-execute fix/<id>` → `/dm-review fix/<id>` → `/dm-ship fix/<id>`
+
+Branch `fix/<id>`, worktree `.worktrees/fix/<id>`, plan
+`docs/plans/fix-<id>.md`, review `docs/reviews/fix/<id>.md`, board key
+`fix/<id>` with the same statuses as any ticket (backlog → ready → in
+progress → test → shipped).
+
+Fix ticket mode is intended to eventually replace Quick Fix for anything that
+needs real rigor, but it does not remove or change Quick Fix mode today — both
+coexist.
+
 ## Pipeline (commands)
 - `/dm-prd`        frames the product: clone an existing SaaS **or** greenfield (WHAT + WHY). Not kill-only.
 - `/dm-init`       GitHub or GitLab remote, `main` (+ optional `develop`), board, wiki, `VERSION`, CI
@@ -68,6 +99,7 @@ there, coordinate ownership or stop; never overlap edits.
 - `/dm-design`     derives a story's screen from the design system (UI stories)
 - `/dm-plan`       breaks a story into sequenced child tickets (size + person-day estimates)
 - `/dm-docs`       product page `docs/product/<story-id>.md` (wiki publish is release)
+- `/dm-fix`        frames a standalone **fix ticket** (no parent story) — same rigor as a ticket
 - `/dm-execute`    implements a **ticket** in TDD (implementer subagent)
 - `/dm-review`     quality-bar review + gate (reviewer subagent)
 - `/dm-ship`       opens the PR (GitLab: merge request) into the integration branch; merge per the ship strategy (manual by default)
@@ -89,16 +121,18 @@ One user story = Research → Design → Plan (child tickets) → Docs → then 
 | `develop` | integration — **optional** (`.dm/config.json` → `"develop"`, default `true`) | PRs/MRs from `feature/*`; Quick Fix lands here. When absent, `feature/*` and Quick Fix target `main` directly. |
 | `feature/<story-id>` | story framing (research, design, plan, product doc) | docs only, created from the integration branch |
 | `feature/<story-id>/<ticket-id>` | one child ticket | implementation worktree, created from the integration branch |
+| `fix/<id>` | standalone fix ticket (no parent story) | implementation worktree, created from the integration branch — see Fix ticket mode above |
 
 ## Where work happens
 
-There are exactly three modes. A complexity score never chooses the directory:
+There are exactly four modes. A complexity score never chooses the directory:
 
 | Mode | Working directory | Branch |
 | --- | --- | --- |
 | Explicit Quick Fix | Repository base directory | The integration branch; if another branch is checked out, stop and ask before continuing |
 | Story framing (research / design / plan / docs) | `.worktrees/<story-id>/` | Exact `feature/<story-id>` (docs only) |
 | Ticket implementation | `.worktrees/<story-id>/<ticket-id>/` | Exact `feature/<story-id>/<ticket-id>` |
+| Fix ticket implementation | `.worktrees/fix/<id>/` | Exact `fix/<id>` |
 
 Every change that is not explicitly announced and eligible as a Quick Fix is a
 feature. Story framing uses the story worktree; implementation uses the ticket

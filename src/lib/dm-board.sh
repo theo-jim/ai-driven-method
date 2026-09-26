@@ -349,8 +349,10 @@ cmd_issue_create_ticket() {
   full_title="[${key}] ${title}"
   url="$(issue_create "$full_title" "$body_file")"
   child_num="$(add_issue_to_project_backlog "$url" "$key")"
-  # Link as sub-issue when parent exists; on failure write Parent: #<n> + label ticket
-  if parent_raw="$(find_issue_json "$story_id" 2>/dev/null)"; then
+  # "fix" is a reserved namespace key, never a real parent — a fix ticket must
+  # never be sub-issue-linked, even if an unrelated issue happens to be titled
+  # "[fix]" or "[fix] ...".
+  if [ "$story_id" != "fix" ] && parent_raw="$(find_issue_json "$story_id" 2>/dev/null)"; then
     local parent_num sub_ok=0
     parent_num="$(node -e 'process.stdout.write(String(JSON.parse(process.argv[1]).number||""))' "$parent_raw")"
     if link_sub_issue "$parent_raw" "$key"; then

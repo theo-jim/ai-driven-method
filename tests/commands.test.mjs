@@ -6,7 +6,7 @@ const required = [
   "dm-prd", "dm-init", "dm-stories", "dm-stories-review", "dm-architect",
   "dm-design-system", "dm-research", "dm-design", "dm-plan", "dm-docs",
   "dm-execute", "dm-review", "dm-ship", "dm-release", "dm-orchestrator",
-  "dm-status", "dm-help", "dm-continue", "dm-feature",
+  "dm-status", "dm-help", "dm-continue", "dm-feature", "dm-fix",
 ];
 
 test("all dv commands exist", () => {
@@ -171,4 +171,70 @@ test("feature is fail-closed without a PRD or a breakdown", () => {
 test("status and help route a fully shipped product to dm-feature", () => {
   assert.match(readFileSync("src/commands/dm-status.md", "utf8"), /\/dm-feature/);
   assert.match(readFileSync("src/commands/dm-help.md", "utf8"), /\/dm-feature/);
+});
+
+test("fix frames a standalone ticket and creates its board issue under the fix key", () => {
+  const t = readFileSync("src/commands/dm-fix.md", "utf8");
+  assert.match(t, /issue-create-ticket fix <id>/);
+  assert.match(t, /fix\/<id>/);
+  assert.match(t, /docs\/plans\/fix-/);
+  assert.match(t, /validated/);
+  assert.match(t, /size/i);
+  assert.match(t, /estimate/i);
+  assert.match(t, /AskUserQuestion/i);
+});
+
+test("fix plan template is scoped to a single fix, not a multi-ticket breakdown", () => {
+  const t = readFileSync("src/templates/fix-plan.md", "utf8");
+  assert.match(t, /validated: no/);
+  assert.match(t, /size/i);
+  assert.match(t, /estimate/i);
+  assert.doesNotMatch(t, /Tickets \(ordered\)/);
+});
+
+test("execute, review and ship are fix-aware without disturbing the story/ticket contract", () => {
+  for (const n of ["dm-execute", "dm-review", "dm-ship"]) {
+    const t = readFileSync(`src/commands/${n}.md`, "utf8");
+    assert.match(t, /fix\/<id>/, `${n} should mention fix/<id>`);
+    assert.match(t, /docs\/plans\/fix-/, `${n} should mention docs/plans/fix-`);
+  }
+  const review = readFileSync("src/commands/dm-review.md", "utf8");
+  assert.match(review, /docs\/reviews\/fix\//);
+});
+
+test("ship still requires the story product doc, and documents skipping it for a fix", () => {
+  const t = readFileSync("src/commands/dm-ship.md", "utf8");
+  assert.match(t, /docs\/product\/<story-id>\.md/);
+  assert.match(t, /skip the .*docs\/product\/<story-id>\.md.* requirement/);
+});
+
+test("ship's fix-ticket note drops parent-sync from cleanup", () => {
+  const t = readFileSync("src/commands/dm-ship.md", "utf8");
+  assert.match(t, /no[\s\S]*`parent-sync`[\s\S]*call/);
+});
+
+test("fix declares the Agent tool, invokes worktree-manager for its own worktree, and commits the validated plan there", () => {
+  const t = readFileSync("src/commands/dm-fix.md", "utf8");
+  const frontmatter = t.split("---")[1];
+  // Without Agent in allowed-tools, the command physically cannot invoke worktree-manager.
+  assert.match(frontmatter, /^\s*-\s*Agent\s*$/m);
+  // Must actually invoke the subagent for its own dedicated worktree, from the integration branch.
+  assert.match(t, /invoke.*worktree-manager|worktree-manager.*invoke/is);
+  assert.match(t, /\.worktrees\/fix\/<id>/);
+  assert.match(t, /branch\s*`?fix\/<id>`?/);
+  assert.match(t, /default-integration-branch/);
+  // Every subsequent read/write must happen inside that worktree, never the repo base directory.
+  assert.match(t, /never[\s\S]{0,40}repository\s+base\s+directory|repository\s+base\s+directory[\s\S]{0,10}never/i);
+  // The validated plan must be committed on fix/<id> so /dm-execute can see it.
+  assert.match(t, /git commit/);
+  assert.match(t, /docs\/plans\/fix-<id>\.md/);
+});
+
+test("fix's worktree-manager step precedes writing the plan file", () => {
+  const t = readFileSync("src/commands/dm-fix.md", "utf8");
+  const wtIdx = t.search(/worktree-manager/);
+  const writeIdx = t.search(/write `docs\/plans\/fix-<id>\.md`/i);
+  assert.ok(wtIdx >= 0, "worktree-manager step must exist");
+  assert.ok(writeIdx >= 0, "plan write step must exist");
+  assert.ok(wtIdx < writeIdx, "worktree-manager must run before the plan is written");
 });
