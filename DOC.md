@@ -3,7 +3,7 @@ A fork of [killer-saas](https://github.com/MikeCodeur/killer-saas) by [Mike Code
 Commands: `/dm-*`.
 
 driven keeps the original pipeline (no direct coding, file gates, subagents)
-and adds: hybrid PRD (clone or greenfield), Grok install, GitHub board + wiki,
+and adds: hybrid PRD (clone or greenfield), Grok install, GitHub or GitLab board + wiki,
 `main`/`develop` flow (`develop` optional per project), a stricter quality bar,
 and semver on release.
 
@@ -11,7 +11,7 @@ See [NOTICE](NOTICE) and [README.md](README.md).
 
 # ai-driven-method — Method documentation
 
-A complete agentic pipeline for product delivery with Claude Code, Codex, or Grok: frame a hybrid PRD (clone an existing SaaS **or** greenfield), cut shippable user stories and child tickets, enforce quality on a GitHub Project board + wiki + `main`/`develop` flow, and release with semver.
+A complete agentic pipeline for product delivery with Claude Code, Codex, or Grok: frame a hybrid PRD (clone an existing SaaS **or** greenfield), cut shippable user stories and child tickets, enforce quality on a GitHub Project or GitLab Issue board + wiki + `main`/`develop` flow, and release with semver.
 One method = a suite of commands. One principle = no direct coding.
 
 ## Philosophy
@@ -72,7 +72,7 @@ Then story framing (docs on `feature/<story-id>`), then ticket delivery
 | --- | --- | --- | --- |
 | Continue | `/dm-continue` | Existing project: product baseline + Issue mapping, mutates nothing | `docs/onboarding.md` |
 | PRD | `/dm-prd` | Hybrid frame: clone **or** greenfield — the WHAT and the WHY | `docs/prd.md` |
-| Init | `/dm-init` | Remote, `main` (+ optional `develop`), Project board, wiki, `VERSION`, CI | `.dm/config.json`, `VERSION`, protections |
+| Init | `/dm-init` | GitHub or GitLab remote, `main` (+ optional `develop`), board, wiki, `VERSION`, CI | `.dm/config.json`, `VERSION`, protections |
 | Stories | `/dm-stories` | Shippable US + **one parent Issue** per US (`backlog`) | `docs/stories.md` |
 | Stories Review | `/dm-stories-review` | Fresh-context review of the breakdown vs the PRD | `docs/reviews/stories.md` |
 | Architecture | `/dm-architect` | Stack from PRD / existing code; conventions | `docs/architecture.md` + `AGENTS.md` |
@@ -83,13 +83,13 @@ Then story framing (docs on `feature/<story-id>`), then ticket delivery
 | Docs | `/dm-docs <story>` | Product page for the wiki (no wiki push) | `docs/product/<story>.md` |
 | Execute | `/dm-execute <story> <ticket>` | TDD via `implementer`; `require-ready` first | code + tests + commits |
 | Review | `/dm-review <story> <ticket>` | Quality-bar review by `reviewer` | `docs/reviews/<story>/<ticket>.md` |
-| Ship | `/dm-ship <story> <ticket>` | PR into **the integration branch**; after merge child → `test` | PR / board update |
-| Release | `/dm-release` | Bump `VERSION`, PR integration branch → `main` (skipped without `develop`), wiki, `shipped` | tag + wiki + board |
+| Ship | `/dm-ship <story> <ticket>` | PR/MR into **the integration branch**; after merge child → `test` | PR/MR / board update |
+| Release | `/dm-release` | Bump `VERSION`, PR/MR integration branch → `main` (skipped without `develop`), wiki, `shipped` | tag + wiki + board |
 | Feature | `/dm-feature <slug>` | Post-v1: frame, amend the PRD, append stories | `docs/prd.md` + `docs/stories.md` |
 
 ### Framing (once per product)
 
-**/dm-continue** — the brownfield entry point. Read-only on the repo and on GitHub: it
+**/dm-continue** — the brownfield entry point. Read-only on the repo and on the code host: it
 writes `docs/onboarding.md` (what the app does, the shipped baseline, a proposed
 `issue #N → sNN-slug` mapping) and nothing else. It cannot touch the board — `.dm/config.json`
 does not exist before `/dm-init`. The mapping is applied later by `/dm-stories`, one
@@ -98,7 +98,7 @@ repo → `/dm-prd`; `docs/prd.md` already present → `/dm-status`.
 
 **/dm-prd** — frames the product by interviewing the user. First question: **clone** an existing SaaS vs **greenfield**. Clone mode covers target, kill mode (internal replacement vs competing product), why, the 20% perimeter, complexity scores, graveyard, and angle beyond parity. Greenfield covers need, users, why now, in/out of scope (graveyard still kills creep), constraints, and success — no fake “target SaaS”. Nothing is filled without validation. The WHAT and the WHY, never the HOW.
 
-**/dm-init** — bootstraps the app repo after the PRD: confirm remote name/visibility/owner, optionally create `develop` from `main` (`--no-develop` to skip it), protect the branch(es), create the Project V2 board with statuses `backlog | ready | in progress | test | shipped`, write `.dm/config.json` (including `"develop": true|false`), enable the wiki, write `VERSION` (`0.1.0` if absent), copy the CI workflow. Idempotent: re-runs only fill gaps.
+**/dm-init** — bootstraps the app repo after the PRD: confirm the platform (GitHub or GitLab, see [GitHub or GitLab](#github-or-gitlab)) and remote name/visibility/owner, optionally create `develop` from `main` (`--no-develop` to skip it), protect the branch(es), create the board with statuses `backlog | ready | in progress | test | shipped` (Project V2 on GitHub, status labels + Issue Board on GitLab), write `.dm/config.json` (including `"platform"` and `"develop": true|false`), enable the wiki, write `VERSION` (`0.1.0` if absent), copy the CI gate. Idempotent: re-runs only fill gaps.
 
 **/dm-stories** — breaks the PRD into agentic-ready user stories (`agentic-stories` skill). Each US gets **one parent Issue** in `backlog`. Child tickets are **not** created here. Parent US never uses status `ready`.
 
@@ -126,11 +126,11 @@ mockup are.
 
 **/dm-review** — `reviewer` + `quality-bar` skill. Diff is `git diff <integration-branch>...feature/<story>/<ticket>` (resolved via `dm-gate.sh default-integration-branch`). Ends with `Max severity: …` and `Ship allowed: yes|no`. **A single critical or major = Ship allowed: no.**
 
-**/dm-ship** — greps `Ship allowed: yes`, opens PR into **the integration branch**. After a proven merge: child → `test`, `parent-sync`.
+**/dm-ship** — greps `Ship allowed: yes`, opens the pull/merge request into **the integration branch** (`dm-vcs.sh pr-create`). After a proven merge: child → `test`, `parent-sync`.
 
 ### Production
 
-**/dm-release** — parents in `test`; user picks major/minor/patch; bump `VERSION`; PR integration branch → `main` (via a dedicated `release/v<version>` branch when the project has no `develop`, since `main` is protected); after merge: tag, `dm-wiki.sh publish`, board → `shipped`.
+**/dm-release** — parents in `test`; user picks major/minor/patch; bump `VERSION`; PR/MR integration branch → `main` (via a dedicated `release/v<version>` branch when the project has no `develop`, since `main` is protected); after merge: tag, `dm-wiki.sh publish`, board → `shipped`.
 
 **/dm-feature** — a feature on a product that already ships. The PRD is a living
 document: the perimeter table is updated in place and the change is recorded under
@@ -172,7 +172,7 @@ Markdown under `docs/`, plus board config and version:
 | PRD, stories, architecture | `docs/prd.md`, `docs/stories.md`, `docs/architecture.md` |
 | Research, plan, product doc | `docs/research/<id>.md`, `docs/plans/<id>.md`, `docs/product/<id>.md` |
 | Ticket review | `docs/reviews/<story>/<ticket>.md` |
-| Board / project ids | `.dm/config.json` (JSON, committed; created by `/dm-init`) |
+| Platform, board / project ids | `.dm/config.json` (JSON, committed; created by `/dm-init`) |
 | Version | `VERSION`, `CHANGELOG.md` |
 | Decisions | `docs/decisions/NNN-<slug>.md` |
 | Pipeline state | derived — files + `Ship allowed:` + Issue status + git |
@@ -185,7 +185,7 @@ Markdown under `docs/`, plus board config and version:
 | Skills | `*/skills/` | Reusable know-how (`quality-bar`, `tdd-skill`, …) |
 | Agents | `*/agents/` | Isolated execution |
 | Templates | `templates/` | Deliverable skeletons |
-| Lib | `.dm/lib/*.sh` | Board, init, version, wiki helpers |
+| Lib | `.dm/lib/*.sh` | Board, init, version, wiki helpers; `dm-vcs.sh` GitHub/GitLab layer |
 | Rules | `AGENTS.md` (+ `CLAUDE.md` → `@AGENTS.md`) | Repo law |
 | Hooks | `.dm-hooks/` via `--hooks` | Git-enforced gates |
 
@@ -215,11 +215,33 @@ Upstream: plan validation (`validated: yes`) and board ready-gate (child in `rea
 
 ## Definition of Done (per ticket)
 
-- Single PR into the integration branch, structured description, readable diff
+- Single PR/MR into the integration branch, structured description, readable diff
 - Passing tests on business logic
 - No regression on existing code
 - Review passed (no open critical **or major**)
 - Child Issue moved to `test` after merge; released to `main` via `/dm-release`
+
+## GitHub or GitLab
+
+`/dm-init` records the code host in `.dm/config.json` → `"platform"`: `--platform
+github|gitlab`, else detected from `origin` (`github.com` → GitHub, a host containing
+`gitlab` → GitLab; any other host is refused until `--platform` is given). A config written
+before GitLab support has no `platform` field and stays GitHub. Commands never call `gh` or
+`glab` directly: pull/merge request and Issue steps go through `.dm/lib/dm-vcs.sh`, and the
+board helpers load `dm-board-gitlab.sh` on a GitLab project.
+
+| | GitHub (`gh`) | GitLab (`glab`) |
+| --- | --- | --- |
+| Remote | `gh repo create` | `glab repo create` (`--host` for a self-managed instance) |
+| `main` / `develop` protection | branch protection + rulesets | protected branches: push *No one*, merge through a merge request (maintainers on `main` when `develop` exists, developers otherwise) |
+| "`main` only from `develop`" | ruleset | `dm-gate` CI job (GitLab cannot restrict source branches natively — enable *Pipelines must succeed* to make it blocking) |
+| Board statuses | Project V2 single-select `Status` field | one label per status (`dm::backlog`, `dm::ready`, `dm::in progress`, `dm::test`, `dm::shipped`), shown as Issue Board lists; `dm-board.sh` keeps exactly one per Issue |
+| Parent / child | sub-issues (fallback `Parent: #n` + label `ticket`) | issue links (same fallback) |
+| Ship / release | pull request | merge request — `dm-vcs.sh pr-create / pr-state / pr-merge` |
+| Wiki | `<repo>.wiki.git`, `Home.md` | `<project>.wiki.git`, `home.md`; token from `GITLAB_TOKEN` / `glab` |
+| CI gate | `.github/workflows/dm-gate.yml` | `.gitlab/ci/dm-gate.yml`, included from `.gitlab-ci.yml`; runs in the `test` stage, so a project with its own `stages:` must list `test` |
+
+"PR" in the commands means a GitHub pull request or a GitLab merge request.
 
 ## Install
 
@@ -256,7 +278,7 @@ One canonical source (`src/`), one installer, per-tool emission — no forked co
 - **pre-commit** — no **code** on `feature/<story>/<ticket>` without `validated: yes` plan; when `.dm/config.json` exists, child must be `ready` or `in progress`. Docs-only always allowed. Story framing branches are docs-only.
 - **pre-push** — only the integration branch may update `main`; ticket branches need `Ship allowed: yes` before landing on the integration branch.
 
-So plan, ready, and review gates hold on Claude, Codex and Grok alike — enforcement lives in the repo, not the harness. CI template `dm-gate.yml` (copied at `/dm-init`) mirrors the ship / version checks on pull requests.
+So plan, ready, and review gates hold on Claude, Codex and Grok alike — enforcement lives in the repo, not the harness. CI template `dm-gate.yml` (GitHub Actions) or `dm-gate.gitlab-ci.yml` (GitLab CI), copied at `/dm-init`, mirrors the ship / version checks on pull/merge requests.
 
 ## Provenance
 

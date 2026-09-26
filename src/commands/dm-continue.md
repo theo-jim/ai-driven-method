@@ -14,8 +14,8 @@ allowed-tools:
 You are onboarding an **existing** project into driven. The code already runs; the
 documentation does not exist yet. Your single deliverable is `docs/onboarding.md`.
 
-`Bash` is for read-only queries (`git log`, `git ls-files`, `gh issue list`) and for
-the docs commit at the end. Never mutate the board, never write through `gh`.
+`Bash` is for read-only queries (`git log`, `git ls-files`, `dm-vcs.sh issue-list`) and for
+the docs commit at the end. Never mutate the board, never write through `gh` or `glab`.
 
 ## Prerequisites (fail-closed)
 - Source files must exist outside `docs/`, and the git history must hold more than one
@@ -36,12 +36,13 @@ the docs commit at the end. Never mutate the board, never write through `gh`.
 1. Inventory the product surface: entry points, routes/screens, main flows. Use Glob and
    Grep. You are answering "what does this app do for its users", not "how is it built".
 2. Read the git history (`git log --oneline`) for what has already shipped and when.
-3. If `gh auth status` succeeds, list the open and closed Issues:
+3. If `bash .dm/lib/dm-vcs.sh auth-check` succeeds, list the open and closed Issues
+   (`gh` on GitHub, `glab` on GitLab — detected from `origin`):
    ```bash
-   gh issue list --state open --limit 200 --json number,title,labels
-   gh issue list --state closed --limit 200 --json number,title
+   bash .dm/lib/dm-vcs.sh issue-list open
+   bash .dm/lib/dm-vcs.sh issue-list closed
    ```
-   `gh` missing or unauthenticated → skip the mapping section, print an explicit warning,
+   CLI missing or unauthenticated → skip the mapping section, print an explicit warning,
    and write the baseline anyway. A missing board must never block documenting the product.
 
 ## Confirm with the user (AskUserQuestion, one at a time)

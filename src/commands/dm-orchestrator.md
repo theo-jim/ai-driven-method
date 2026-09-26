@@ -67,6 +67,6 @@ Same as `/dm-execute`: `status-set … "in progress"`, delegate `implementer` fo
 Same as `/dm-review` for `<story-id> <ticket-id>`. Gate: `Ship allowed: no` → fix loop via execute (max 2).
 
 ### Phase 3 — Ship checkpoint
-AskUserQuestion: "Ship now?" — Ship / Not now. Only explicit Ship runs `/dm-ship` (PR into the integration branch; after MERGED: `status-set … test` + `parent-sync`).
+AskUserQuestion: "Ship now?" — Ship / Not now. Only explicit Ship runs `/dm-ship` (pull/merge request into the integration branch; after MERGED: `status-set … test` + `parent-sync`).
 
-End with the ship outcome for this ticket (PR URL or merged + board test).
+End with the ship outcome for this ticket (PR/MR URL or merged + board test).

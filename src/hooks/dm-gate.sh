@@ -4,9 +4,9 @@
 # the gates live in the repo, not in a tool's per-command permissions.
 #
 # Branches (app git flow):
-#   main     = production (only updated from the integration branch; GitHub branch
+#   main     = production (only updated from the integration branch; server-side branch
 #              protection is the real guarantee)
-#   develop  = integration (optional — see .dm/config.json "develop"; feature PRs
+#   develop  = integration (optional — see .dm/config.json "develop"; feature PRs/MRs
 #              land here when present, otherwise feature/* targets main directly)
 #   feature/<story-id>              = story framing (docs only)
 #   feature/<story-id>/<ticket-id>  = ticket implementation
@@ -81,11 +81,15 @@ quickfix_fallback_branch() {
 }
 
 # Quick Fixes commit on the integration branch. A rejected direct push is
-# recovered through a temporary PR, which follows the same manual/auto ship
-# strategy as /dm-ship. The branch is deliberately left intact unless GitHub
-# proves that the squash merge completed.
+# recovered through a temporary PR/MR (via dm-vcs.sh — GitHub or GitLab), which
+# follows the same manual/auto ship strategy as /dm-ship. The branch is
+# deliberately left intact unless the platform proves the squash merge completed.
 quickfix_push() {
-  local integ fallback title body url mode state current
+  local vcs integ fallback title body_file url mode state current
+  if ! vcs="$(resolve_vcs)"; then
+    echo "dm-gate: dm-vcs.sh missing — cannot open a fallback PR/MR." >&2
+    return 1
+  fi
   integ="$(integration_branch)"
   current="$(git rev-parse --abbrev-ref HEAD)"
   if [ "$current" != "$integ" ]; then
@@ -98,44 +102,49 @@ quickfix_push() {
     return 0
   fi
 
-  echo "dm-gate: direct Quick Fix push to $integ was refused; opening a short-lived fallback PR." >&2
+  echo "dm-gate: direct Quick Fix push to $integ was refused; opening a short-lived fallback PR/MR." >&2
   fallback="$(quickfix_fallback_branch)"
   git branch "$fallback"
   git push origin "$fallback"
 
   title="Quick Fix: $(git log -1 --format=%s)"
-  body="## What
+  body_file="$(mktemp)"
+  trap 'rm -f "$body_file"' RETURN
+  cat >"$body_file" <<BODY
+## What
 
 Quick Fix commit $(git rev-parse --short HEAD).
 
 ## Why
 
-The direct push to $integ was refused, so this PR uses the protected-branch path.
+The direct push to $integ was refused, so this PR/MR uses the protected-branch path.
 
 ## How to test
 
-Review the commit and run the verification recorded with this Quick Fix."
-  url="$(gh pr create --base "$integ" --head "$fallback" --title "$title" --body "$body")"
+Review the commit and run the verification recorded with this Quick Fix.
+BODY
+  url="$(bash "$vcs" pr-create "$integ" "$fallback" "$title" "$body_file")"
   mode="$(quickfix_merge_mode)"
 
   if [ "$mode" = "manual" ]; then
-    printf 'Quick Fix PR opened: %s (base: %s). Merging is yours to decide — squash-merge it.\n' "$url" "$integ"
+    printf 'Quick Fix PR/MR opened: %s (base: %s). Merging is yours to decide — squash-merge it.\n' "$url" "$integ"
     return 0
   fi
 
-  if ! gh pr merge "$url" --squash --delete-branch=false; then
-    echo "dm-gate: gh pr merge failed for $url; fallback branch kept for a retry." >&2
+  if ! bash "$vcs" pr-merge "$url"; then
+    echo "dm-gate: pr-merge failed for $url; fallback branch kept for a retry." >&2
   fi
 
-  state="$(gh pr view "$url" --json state,mergedAt --jq '.state')"
+  state="$(bash "$vcs" pr-state "$url")"
   if [ "$state" != "MERGED" ]; then
-    echo "dm-gate: Quick Fix PR is '$state', not MERGED; fallback branch kept." >&2
+    echo "dm-gate: Quick Fix PR/MR is '$state', not MERGED; fallback branch kept." >&2
     return 1
   fi
 
   git branch -D "$fallback"
-  # GitHub can auto-delete the head branch server-side on merge regardless of
-  # --delete-branch=false; tolerate that instead of crashing on a proven merge.
+  # The platform can auto-delete the head branch server-side on merge regardless
+  # of the "keep source branch" request; tolerate that instead of crashing on a
+  # proven merge.
   git push origin --delete "$fallback" 2>/dev/null || true
 
   # The merge created a new squash commit on origin/$integ that local $integ
@@ -157,6 +166,22 @@ resolve_board() {
   fi
   if [ -f "$script_dir/../lib/dm-board.sh" ]; then
     printf '%s' "$script_dir/../lib/dm-board.sh"
+    return 0
+  fi
+  return 1
+}
+
+# Prefer app install path (.dm/lib); fall back to method-repo sibling of this hook.
+resolve_vcs() {
+  local root script_dir
+  root="$(repo_root)"
+  script_dir="$(CDPATH= cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  if [ -f "$root/.dm/lib/dm-vcs.sh" ]; then
+    printf '%s' "$root/.dm/lib/dm-vcs.sh"
+    return 0
+  fi
+  if [ -f "$script_dir/../lib/dm-vcs.sh" ]; then
+    printf '%s' "$script_dir/../lib/dm-vcs.sh"
     return 0
   fi
   return 1
@@ -313,11 +338,11 @@ pre_push() {
     # Production: when there is a distinct integration branch, only it may update
     # main. When there isn't (integ == prod, e.g. no develop), skip this block so
     # the integration checks below run for main itself instead of being short-
-    # circuited by the `continue`. Client-side hint — GitHub branch protection is
+    # circuited by the `continue`. Client-side hint — server-side (GitHub/GitLab) branch protection is
     # authoritative either way.
     if [ "$remote_ref" = "refs/heads/$prod" ] && [ "$integ" != "$prod" ]; then
       if [ "$local_ref" != "refs/heads/$integ" ]; then
-        echo "dm-gate: refusing push to $prod from ${local_ref#refs/heads/} — only $integ may update production. (GitHub branch protection is the real guarantee for $prod.)" >&2
+        echo "dm-gate: refusing push to $prod from ${local_ref#refs/heads/} — only $integ may update production. (server-side branch protection on GitHub/GitLab is the real guarantee for $prod.)" >&2
         rc=1
       fi
       continue

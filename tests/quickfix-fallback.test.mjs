@@ -17,6 +17,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const GATE = join(ROOT, "src/hooks/dm-gate.sh");
 const AGENTS = join(ROOT, "src/AGENTS.md");
 const GH_STUB = join(ROOT, "tests/fixtures/gh-stub.sh");
+const GLAB_STUB = join(ROOT, "tests/fixtures/glab-stub.sh");
 
 function repo({
   develop = true,
@@ -221,4 +222,97 @@ test("quickfix-push tolerates the remote already deleting the merged fallback br
   const state = JSON.parse(readFileSync(r.statePath, "utf8"));
   assert.equal(state.prs[0].state, "MERGED");
   assert.equal(remoteHead(r.d, state.prs[0].head), "");
+});
+
+// --- GitLab: the same fallback goes through dm-vcs.sh, not a raw `gh` call ---
+
+function glRepo({ mergeMode = "manual" } = {}) {
+  const d = mkdtempSync(join(tmpdir(), "dm-quickfix-gl-"));
+  const origin = mkdtempSync(join(tmpdir(), "dm-quickfix-gl-origin-"));
+
+  execSync("git init -b main", { cwd: d, stdio: "pipe" });
+  execSync("git config user.email t@t", { cwd: d, stdio: "pipe" });
+  execSync("git config user.name t", { cwd: d, stdio: "pipe" });
+  writeFileSync(join(d, "README"), "x");
+  execSync("git add README", { cwd: d, stdio: "pipe" });
+  execSync("git commit -m initial", { cwd: d, stdio: "pipe" });
+  execSync("git branch develop", { cwd: d, stdio: "pipe" });
+
+  mkdirSync(join(d, ".dm"), { recursive: true });
+  writeFileSync(
+    join(d, ".dm/config.json"),
+    JSON.stringify({ platform: "gitlab", host: "gitlab.example.com", owner: "acme", repo: "app", develop: true }),
+  );
+  const agents = readFileSync(AGENTS, "utf8").replace("Merge mode: manual", `Merge mode: ${mergeMode}`);
+  writeFileSync(join(d, "AGENTS.md"), agents);
+
+  execSync(`git init --bare ${origin}`, { stdio: "pipe" });
+  execSync(`git remote add origin ${origin}`, { cwd: d, stdio: "pipe" });
+  execSync("git push -u origin main", { cwd: d, stdio: "pipe" });
+  execSync("git push origin develop", { cwd: d, stdio: "pipe" });
+  execSync("git checkout develop", { cwd: d, stdio: "pipe" });
+
+  // Model GitLab's receive side rejecting a direct push to a protected branch.
+  const hook = join(origin, "hooks/pre-receive");
+  writeFileSync(
+    hook,
+    `#!/bin/sh\nwhile read old new ref; do\n  if [ "$ref" = "refs/heads/develop" ]; then\n    echo "GitLab: protected branch" >&2\n    exit 1\n  fi\ndone\n`,
+  );
+  chmodSync(hook, 0o755);
+
+  const statePath = join(d, "glab-state.json");
+  writeFileSync(statePath, JSON.stringify({ mrs: [], project: "acme/app", originPath: origin }, null, 2));
+  const bin = join(d, "bin");
+  mkdirSync(bin, { recursive: true });
+  cpSync(GLAB_STUB, join(bin, "glab"));
+  chmodSync(join(bin, "glab"), 0o755);
+
+  return { d, statePath, bin };
+}
+
+function runGlQuickfix({ d, bin, statePath }) {
+  return execFileSync("bash", [GATE, "quickfix-push"], {
+    cwd: d,
+    encoding: "utf8",
+    stdio: ["pipe", "pipe", "pipe"],
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, DM_GLAB_STUB_STATE: statePath },
+  });
+}
+
+test("quickfix-push opens a GitLab merge request when develop is protected, in manual mode", () => {
+  const r = glRepo();
+  commitQuickfix(r.d);
+
+  const out = runGlQuickfix(r);
+
+  assert.match(out, /Quick Fix PR\/MR opened/);
+  const state = JSON.parse(readFileSync(r.statePath, "utf8"));
+  assert.equal(state.mrs.length, 1);
+  assert.equal(state.mrs[0].target_branch, "develop");
+  assert.match(state.mrs[0].source_branch, /^quickfix\//);
+  assert.equal(state.mrs[0].state, "opened");
+});
+
+test("quickfix-push merges the fallback GitLab MR in auto mode, keeps the branch and cleans up", () => {
+  const r = glRepo({ mergeMode: "auto" });
+  commitQuickfix(r.d);
+  const preFallbackSha = execSync("git rev-parse HEAD", { cwd: r.d, encoding: "utf8" }).trim();
+
+  const out = runGlQuickfix(r);
+
+  assert.match(out, /Quick Fix merged into/);
+  const state = JSON.parse(readFileSync(r.statePath, "utf8"));
+  assert.equal(state.mrs.length, 1);
+  assert.equal(state.mrs[0].state, "merged");
+  // dm_vcs_gitlab_mr_merge cleared force_remove_source_branch and merged with
+  // should_remove_source_branch=false — the branch must have survived the merge.
+  assert.equal(state.mrs[0].force_remove_source_branch, false);
+  assert.ok(state.branches.includes(state.mrs[0].source_branch));
+  assert.equal(execSync(`git branch --list ${state.mrs[0].source_branch}`, { cwd: r.d, encoding: "utf8" }).trim(), "");
+
+  execSync("git fetch origin", { cwd: r.d, stdio: "pipe" });
+  const localSha = execSync("git rev-parse develop", { cwd: r.d, encoding: "utf8" }).trim();
+  const remoteSha = execSync("git rev-parse origin/develop", { cwd: r.d, encoding: "utf8" }).trim();
+  assert.equal(localSha, remoteSha);
+  assert.notEqual(localSha, preFallbackSha);
 });
