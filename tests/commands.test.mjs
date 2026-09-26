@@ -6,7 +6,7 @@ const required = [
   "dm-prd", "dm-init", "dm-stories", "dm-stories-review", "dm-architect",
   "dm-design-system", "dm-research", "dm-design", "dm-plan", "dm-docs",
   "dm-execute", "dm-review", "dm-ship", "dm-release", "dm-orchestrator",
-  "dm-status", "dm-help", "dm-continue", "dm-feature",
+  "dm-status", "dm-help", "dm-continue", "dm-feature", "dm-fix",
 ];
 
 test("all dv commands exist", () => {
@@ -171,4 +171,44 @@ test("feature is fail-closed without a PRD or a breakdown", () => {
 test("status and help route a fully shipped product to dm-feature", () => {
   assert.match(readFileSync("src/commands/dm-status.md", "utf8"), /\/dm-feature/);
   assert.match(readFileSync("src/commands/dm-help.md", "utf8"), /\/dm-feature/);
+});
+
+test("fix frames a standalone ticket and creates its board issue under the fix key", () => {
+  const t = readFileSync("src/commands/dm-fix.md", "utf8");
+  assert.match(t, /issue-create-ticket fix <id>/);
+  assert.match(t, /fix\/<id>/);
+  assert.match(t, /docs\/plans\/fix-/);
+  assert.match(t, /validated/);
+  assert.match(t, /size/i);
+  assert.match(t, /estimate/i);
+  assert.match(t, /AskUserQuestion/i);
+});
+
+test("fix plan template is scoped to a single fix, not a multi-ticket breakdown", () => {
+  const t = readFileSync("src/templates/fix-plan.md", "utf8");
+  assert.match(t, /validated: no/);
+  assert.match(t, /size/i);
+  assert.match(t, /estimate/i);
+  assert.doesNotMatch(t, /Tickets \(ordered\)/);
+});
+
+test("execute, review and ship are fix-aware without disturbing the story/ticket contract", () => {
+  for (const n of ["dm-execute", "dm-review", "dm-ship"]) {
+    const t = readFileSync(`src/commands/${n}.md`, "utf8");
+    assert.match(t, /fix\/<id>/, `${n} should mention fix/<id>`);
+    assert.match(t, /docs\/plans\/fix-/, `${n} should mention docs/plans/fix-`);
+  }
+  const review = readFileSync("src/commands/dm-review.md", "utf8");
+  assert.match(review, /docs\/reviews\/fix\//);
+});
+
+test("ship still requires the story product doc, and documents skipping it for a fix", () => {
+  const t = readFileSync("src/commands/dm-ship.md", "utf8");
+  assert.match(t, /docs\/product\/<story-id>\.md/);
+  assert.match(t, /skip the .*docs\/product\/<story-id>\.md.* requirement/);
+});
+
+test("ship's fix-ticket note drops parent-sync from cleanup", () => {
+  const t = readFileSync("src/commands/dm-ship.md", "utf8");
+  assert.match(t, /no[\s\S]*`parent-sync`[\s\S]*call/);
 });

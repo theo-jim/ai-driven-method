@@ -20,6 +20,20 @@ You MUST complete this command by delegating to the `reviewer` subagent (fresh c
 
 If you can't invoke the Agent tool, stop and report the error. Don't improvise.
 
+## Fix tickets
+If `$ARGUMENTS` is a single `fix/<id>` (or resolves to an existing
+`docs/plans/fix-<id>.md`), this is a **fix ticket**: treat
+`<story-id>/<ticket-id>` everywhere below as `fix/<id>`,
+`feature/<story-id>/<ticket-id>` as `fix/<id>`,
+`.worktrees/<story-id>/<ticket-id>` as `.worktrees/fix/<id>`,
+`docs/plans/<story-id>.md` as `docs/plans/fix-<id>.md`, and
+`docs/reviews/<story-id>/<ticket-id>.md` as `docs/reviews/fix/<id>.md`. A fix
+has no parent story: skip any step that references cross-ticket dependencies
+in the story plan. The reviewer subagent prompt below adapts the same way —
+diff is `git diff <integration-branch>...fix/<id>`, judged against
+`docs/plans/fix-<id>.md`, and the report is written to
+`docs/reviews/fix/<id>.md`.
+
 ## Workflow
 
 ### Step 1 — Delegate
