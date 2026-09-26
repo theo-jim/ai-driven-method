@@ -109,6 +109,81 @@ case "$args" in
   *"has_wiki"*)
     echo '{}'
     ;;
+  *"pr create"*)
+    node -e '
+      const fs=require("fs");
+      const s=JSON.parse(fs.readFileSync(process.env.DM_GH_STUB_STATE,"utf8"));
+      const argv=process.argv.slice(1);
+      const get=flag=>{const i=argv.indexOf(flag); return i>=0?argv[i+1]:null;};
+      s.prs=s.prs||[];
+      const number=s.prs.length+1;
+      const pr={
+        number,
+        url:"https://github.com/acme/app/pull/"+number,
+        base:get("--base"),
+        head:get("--head"),
+        title:get("--title"),
+        body:get("--body"),
+        state:"OPEN",
+        mergedAt:null
+      };
+      s.prs.push(pr);
+      fs.writeFileSync(process.env.DM_GH_STUB_STATE,JSON.stringify(s,null,2));
+      process.stdout.write(pr.url+"\n");
+    ' "$@"
+    ;;
+  *"pr merge"*)
+    node -e '
+      const fs=require("fs");
+      const { execFileSync }=require("child_process");
+      const s=JSON.parse(fs.readFileSync(process.env.DM_GH_STUB_STATE,"utf8"));
+      const target=process.argv.slice(3).find(a=>!a.startsWith("-"));
+      const pr=(s.prs||[]).find(p=>p.url===target||p.head===target);
+      if (!pr) process.exit(1);
+      s.merge_calls=(s.merge_calls||0)+1;
+      if (s.merge_fail_remaining>0) {
+        s.merge_fail_remaining--;
+        fs.writeFileSync(process.env.DM_GH_STUB_STATE,JSON.stringify(s,null,2));
+        process.exit(1);
+      }
+      pr.state="MERGED";
+      pr.mergedAt="2026-01-01T00:00:00Z";
+      if (s.originPath) {
+        const git=(args)=>execFileSync("git",["--git-dir",s.originPath,...args],{
+          env:{...process.env,GIT_AUTHOR_NAME:"gh-stub",GIT_AUTHOR_EMAIL:"gh-stub@test",GIT_COMMITTER_NAME:"gh-stub",GIT_COMMITTER_EMAIL:"gh-stub@test"}
+        }).toString().trim();
+        try {
+          // Real squash-merge: a *new* commit on the base branch carrying the
+          // head branch tree, parented on base (not on head) — same content,
+          // different SHA, exactly like GitHub-side squash produces.
+          const headSha=git(["rev-parse","refs/heads/"+pr.head]);
+          const baseSha=git(["rev-parse","refs/heads/"+pr.base]);
+          const tree=git(["rev-parse",headSha+"^{tree}"]);
+          const squashSha=git(["commit-tree",tree,"-p",baseSha,"-m",pr.title||"squash merge"]);
+          git(["update-ref","refs/heads/"+pr.base,squashSha]);
+          // Simulate the GitHub "automatically delete head branches" repo
+          // setting, which removes the head ref server-side regardless of
+          // --delete-branch.
+          if (s.auto_delete_head) git(["update-ref","-d","refs/heads/"+pr.head]);
+        } catch (e) { /* best-effort simulation */ }
+      }
+      fs.writeFileSync(process.env.DM_GH_STUB_STATE,JSON.stringify(s,null,2));
+    ' "$@"
+    ;;
+  *"pr view"*)
+    node -e '
+      const fs=require("fs");
+      const s=JSON.parse(fs.readFileSync(process.env.DM_GH_STUB_STATE,"utf8"));
+      const argv=process.argv.slice(3);
+      const target=argv.find(a=>!a.startsWith("-"));
+      const pr=(s.prs||[]).find(p=>p.url===target||p.head===target);
+      if (!pr) process.exit(1);
+      s.view_calls=(s.view_calls||0)+1;
+      fs.writeFileSync(process.env.DM_GH_STUB_STATE,JSON.stringify(s,null,2));
+      if (argv.includes("--jq")) process.stdout.write(pr.state+"\n");
+      else process.stdout.write(JSON.stringify({state:pr.state,mergedAt:pr.mergedAt}));
+    ' "$@"
+    ;;
   *"issue list"*)
     node -e '
       const s=JSON.parse(require("fs").readFileSync(process.env.DM_GH_STUB_STATE,"utf8"));

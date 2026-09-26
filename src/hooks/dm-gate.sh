@@ -16,6 +16,7 @@
 #   dm-gate ship-allowed  <id>               exit 0 if the review has `Ship allowed: yes`
 #   dm-gate ready-ok [story/ticket]          exit 0 if board child is ready|in progress (or no config)
 #   dm-gate default-integration-branch       prints `develop` (or `main` when .dm/config.json has "develop": false)
+#   dm-gate quickfix-push                    push a Quick Fix directly, falling back to a PR when refused
 #   dm-gate pre-commit                       block code without validated plan + ready child;
 #                                            block app code on story framing branches (docs only)
 #   dm-gate pre-push                         refuse non-integration pushes into main; gate ticket merges into the integration branch
@@ -47,6 +48,103 @@ integration_branch() {
   printf 'develop'
 }
 production_branch() { printf 'main'; }
+
+# Reads the project's ship strategy (same "Merge mode:" line /dm-ship reads).
+# Missing or malformed configuration remains manual: opening a PR does not
+# authorize merging it. Case/markdown-tolerant, but still requires "auto" to
+# be the word immediately after "Merge mode:" — not just present anywhere on
+# the line, since the line's own parenthetical always mentions "auto".
+quickfix_merge_mode() {
+  local root mode="manual" match
+  root="$(repo_root)"
+  if [ -f "$root/AGENTS.md" ]; then
+    match="$(awk '{
+      l = tolower($0); gsub(/\*/, "", l)
+      if (l ~ /^merge mode:[ \t]+auto([ \t]|$)/) { print "auto"; exit }
+    }' "$root/AGENTS.md" 2>/dev/null || true)"
+    [ "$match" = "auto" ] && mode="auto"
+  fi
+  printf '%s' "$mode"
+}
+
+quickfix_fallback_branch() {
+  local stamp sha branch attempt=1
+  stamp="$(date -u +%Y%m%d%H%M%S)"
+  sha="$(git rev-parse --short HEAD)"
+  branch="quickfix/${stamp}-${sha}"
+  while git show-ref --verify --quiet "refs/heads/$branch" \
+    || git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; do
+    attempt=$((attempt + 1))
+    branch="quickfix/${stamp}-${sha}-${attempt}"
+  done
+  printf '%s' "$branch"
+}
+
+# Quick Fixes commit on the integration branch. A rejected direct push is
+# recovered through a temporary PR, which follows the same manual/auto ship
+# strategy as /dm-ship. The branch is deliberately left intact unless GitHub
+# proves that the squash merge completed.
+quickfix_push() {
+  local integ fallback title body url mode state current
+  integ="$(integration_branch)"
+  current="$(git rev-parse --abbrev-ref HEAD)"
+  if [ "$current" != "$integ" ]; then
+    echo "dm-gate: quickfix-push must run on the integration branch ('$integ'); currently on '$current'." >&2
+    return 1
+  fi
+
+  if git push origin "$integ"; then
+    printf 'Quick Fix pushed directly to %s.\n' "$integ"
+    return 0
+  fi
+
+  echo "dm-gate: direct Quick Fix push to $integ was refused; opening a short-lived fallback PR." >&2
+  fallback="$(quickfix_fallback_branch)"
+  git branch "$fallback"
+  git push origin "$fallback"
+
+  title="Quick Fix: $(git log -1 --format=%s)"
+  body="## What
+
+Quick Fix commit $(git rev-parse --short HEAD).
+
+## Why
+
+The direct push to $integ was refused, so this PR uses the protected-branch path.
+
+## How to test
+
+Review the commit and run the verification recorded with this Quick Fix."
+  url="$(gh pr create --base "$integ" --head "$fallback" --title "$title" --body "$body")"
+  mode="$(quickfix_merge_mode)"
+
+  if [ "$mode" = "manual" ]; then
+    printf 'Quick Fix PR opened: %s (base: %s). Merging is yours to decide — squash-merge it.\n' "$url" "$integ"
+    return 0
+  fi
+
+  if ! gh pr merge "$url" --squash --delete-branch=false; then
+    echo "dm-gate: gh pr merge failed for $url; fallback branch kept for a retry." >&2
+  fi
+
+  state="$(gh pr view "$url" --json state,mergedAt --jq '.state')"
+  if [ "$state" != "MERGED" ]; then
+    echo "dm-gate: Quick Fix PR is '$state', not MERGED; fallback branch kept." >&2
+    return 1
+  fi
+
+  git branch -D "$fallback"
+  # GitHub can auto-delete the head branch server-side on merge regardless of
+  # --delete-branch=false; tolerate that instead of crashing on a proven merge.
+  git push origin --delete "$fallback" 2>/dev/null || true
+
+  # The merge created a new squash commit on origin/$integ that local $integ
+  # (still at the pre-fallback commit) has no ancestry relation to. Realign so
+  # the next Quick Fix's direct push isn't rejected as non-fast-forward.
+  git fetch origin "$integ"
+  git reset --hard "origin/$integ"
+  printf 'Quick Fix merged into %s and fallback branch %s was removed.\n' "$integ" "$fallback"
+}
 
 # Prefer app install path (.dm/lib); fall back to method-repo sibling of this hook.
 resolve_board() {
@@ -258,10 +356,11 @@ case "$cmd" in
   ship-allowed)                 ship_allowed   "${2:?story or ticket id required}" ;;
   ready-ok)                     ready_ok       "${2:-}" ;;
   default-integration-branch)   integration_branch; printf '\n' ;;
+  quickfix-push)                quickfix_push ;;
   pre-commit)                   pre_commit ;;
   pre-push)                     pre_push ;;
   *)
-    echo "usage: dm-gate {plan-validated <id>|ship-allowed <id>|ready-ok [story/ticket]|default-integration-branch|pre-commit|pre-push}" >&2
+    echo "usage: dm-gate {plan-validated <id>|ship-allowed <id>|ready-ok [story/ticket]|default-integration-branch|quickfix-push|pre-commit|pre-push}" >&2
     exit 2
     ;;
 esac
