@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# dm-wiki — publish product docs to the GitHub wiki on release.
+# dm-wiki — publish product docs to the GitHub or GitLab project wiki on release.
 # Usage: dm-wiki.sh publish <app-root> <version> <story-id...>
 set -euo pipefail
 
@@ -19,17 +19,32 @@ cmd_publish() {
   dm_config_load "$app_root"
 
   local owner="$DM_OWNER" repo="$DM_REPO"
-  local wiki_url="https://github.com/${owner}/${repo}.wiki.git"
-  local token=""
-  if [ -n "${GH_TOKEN:-}" ]; then
-    token="$GH_TOKEN"
-  elif [ -n "${GITHUB_TOKEN:-}" ]; then
-    token="$GITHUB_TOKEN"
-  elif command -v gh >/dev/null; then
-    token="$(gh auth token 2>/dev/null || true)"
-  fi
-  if command -v gh >/dev/null; then
-    gh auth setup-git >/dev/null 2>&1 || true
+  local wiki_url token="" home="Home.md"
+  if [ "$DM_PLATFORM" = gitlab ]; then
+    # GitLab serves the wiki front page from home.md and takes a token as oauth2's password.
+    wiki_url="https://${DM_HOST}/${owner}/${repo}.wiki.git"
+    home="home.md"
+    export DM_WIKI_USER=oauth2
+    if [ -n "${GITLAB_TOKEN:-}" ]; then
+      token="$GITLAB_TOKEN"
+    elif [ -n "${GL_TOKEN:-}" ]; then
+      token="$GL_TOKEN"
+    elif command -v glab >/dev/null; then
+      token="$(glab config get token --host "$DM_HOST" 2>/dev/null || true)"
+    fi
+  else
+    wiki_url="https://github.com/${owner}/${repo}.wiki.git"
+    export DM_WIKI_USER=x-access-token
+    if [ -n "${GH_TOKEN:-}" ]; then
+      token="$GH_TOKEN"
+    elif [ -n "${GITHUB_TOKEN:-}" ]; then
+      token="$GITHUB_TOKEN"
+    elif command -v gh >/dev/null; then
+      token="$(gh auth token 2>/dev/null || true)"
+    fi
+    if command -v gh >/dev/null; then
+      gh auth setup-git >/dev/null 2>&1 || true
+    fi
   fi
   # The token never goes into the URL: it would show up in `ps` while git runs, and
   # `git remote add` would persist it in .git/config. Feed it through a credential
@@ -41,7 +56,7 @@ cmd_publish() {
     # An empty value first RESETS the helper list: `-c credential.helper=X` only
     # appends, so without this an ambient helper (keychain, gh) would answer first.
     git_auth=(-c "credential.helper=" \
-              -c "credential.helper=!f(){ echo username=x-access-token; echo \"password=\$DM_WIKI_TOKEN\"; }; f")
+              -c "credential.helper=!f(){ echo \"username=\$DM_WIKI_USER\"; echo \"password=\$DM_WIKI_TOKEN\"; }; f")
   fi
   local tmp
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/dm-wiki.XXXXXX")"
@@ -49,7 +64,7 @@ cmd_publish() {
   # $tmp no longer exists and `set -u` would fail the whole publish.
   trap "rm -rf '$tmp'" EXIT
 
-  # Clone or init wiki (authenticated via gh token / GH_TOKEN / gh auth setup-git)
+  # Clone or init wiki (authenticated via the platform token)
   if ! git ${git_auth[@]+"${git_auth[@]}"} clone --depth 1 "$clone_url" "$tmp/wiki" 2>/dev/null; then
     mkdir -p "$tmp/wiki"
     (
@@ -59,10 +74,10 @@ cmd_publish() {
       if [ -n "${DM_WIKI_TOKEN:-}" ]; then
         git config --replace-all credential.helper ""
         git config --add credential.helper \
-          '!f(){ echo username=x-access-token; echo "password=$DM_WIKI_TOKEN"; }; f'
+          '!f(){ echo "username=$DM_WIKI_USER"; echo "password=$DM_WIKI_TOKEN"; }; f'
       fi
-      printf '# %s\n' "$repo" >Home.md
-      git add Home.md
+      printf '# %s\n' "$repo" >"$home"
+      git add "$home"
       git -c user.email="${GIT_AUTHOR_EMAIL:-dm-wiki@localhost}" \
           -c user.name="${GIT_AUTHOR_NAME:-dm-wiki}" \
           commit -m "chore: init wiki" || true
@@ -85,15 +100,16 @@ cmd_publish() {
     const path = require("path");
     const wikiDir = process.argv[1];
     const version = process.argv[2];
-    const newly = process.argv.slice(3);
-    const files = fs.readdirSync(wikiDir).filter((f) => f.endsWith(".md") && f !== "Home.md");
+    const home = process.argv[3];
+    const newly = process.argv.slice(4);
+    const files = fs.readdirSync(wikiDir).filter((f) => f.endsWith(".md") && f !== home);
     const ids = files.map((f) => f.replace(/\.md$/, "")).sort();
     for (const id of newly) if (!ids.includes(id)) ids.push(id);
     ids.sort();
     let body = `# Product wiki\n\n**Version:** ${version}\n\n## Shipped stories\n\n`;
     for (const id of ids) body += `- [${id}](${id})\n`;
-    fs.writeFileSync(path.join(wikiDir, "Home.md"), body);
-  ' "$tmp/wiki" "$version" "${shipped[@]}"
+    fs.writeFileSync(path.join(wikiDir, home), body);
+  ' "$tmp/wiki" "$version" "$home" "${shipped[@]}"
 
   (
     cd "$tmp/wiki"
