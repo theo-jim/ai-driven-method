@@ -7,6 +7,19 @@ allowed-tools:
 ---
 You are shipping a **ticket**. Target: $ARGUMENTS
 
+## Fix tickets
+If `$ARGUMENTS` is a single `fix/<id>` (or resolves to an existing
+`docs/plans/fix-<id>.md`), this is a **fix ticket**: treat
+`<story-id>/<ticket-id>` everywhere below as `fix/<id>`,
+`feature/<story-id>/<ticket-id>` as `fix/<id>`,
+`.worktrees/<story-id>/<ticket-id>` as `.worktrees/fix/<id>`,
+`docs/plans/<story-id>.md` as `docs/plans/fix-<id>.md`, and
+`docs/reviews/<story-id>/<ticket-id>.md` as `docs/reviews/fix/<id>.md`. A fix
+has no parent story: skip the `docs/product/<story-id>.md` requirement below
+(fixes have no product doc phase), and in the Cleanup step run
+`bash .dm/lib/dm-board.sh status-set fix/<id> test` with **no** `parent-sync`
+call — there is no parent to sync.
+
 Resolve $ARGUMENTS to `<story-id>` and `<ticket-id>` (`s<number>-<slug>` and `t<number>-<slug>`). The review file `docs/reviews/<story-id>/<ticket-id>.md` must exist. Full work id: `<story-id>/<ticket-id>`.
 
 Resolve the integration branch: `INTEG="$(bash .dm/lib/dm-gate.sh default-integration-branch)"` — `develop` if the project has one, otherwise `main` directly.

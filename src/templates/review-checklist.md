@@ -1,5 +1,10 @@
 # Review — Ticket <story-id>/<ticket-id>
 
+> For a fix ticket (branch `fix/<id>`, no parent story): worktree
+> `.worktrees/fix/<id>`, branch `fix/<id>`, diff
+> `git diff <integration-branch>...fix/<id>`, review written to
+> `docs/reviews/fix/<id>.md`. Same procedure otherwise.
+
 > Fresh-context review. Each issue classified: critical / major / minor.
 > Diff reviewed: `git diff <integration-branch>...feature/<story-id>/<ticket-id>` (resolve `<integration-branch>` with `.dm/lib/dm-gate.sh default-integration-branch`)
 > Report path: `docs/reviews/<story-id>/<ticket-id>.md`
