@@ -45,8 +45,9 @@ cmd_publish() {
   fi
   local tmp
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/dm-wiki.XXXXXX")"
-  cleanup() { rm -rf "$tmp"; }
-  trap cleanup EXIT
+  # Expanded now: the EXIT trap runs after cmd_publish returns, when the local
+  # $tmp no longer exists and `set -u` would fail the whole publish.
+  trap "rm -rf '$tmp'" EXIT
 
   # Clone or init wiki (authenticated via gh token / GH_TOKEN / gh auth setup-git)
   if ! git ${git_auth[@]+"${git_auth[@]}"} clone --depth 1 "$clone_url" "$tmp/wiki" 2>/dev/null; then
